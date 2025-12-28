@@ -1,0 +1,3 @@
+struct FreeNode {
+  FreeNode* next;
+};

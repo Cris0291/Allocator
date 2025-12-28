@@ -1,10 +1,14 @@
+#include "chunk.h"
 #include <cstddef>
 #include <cstdint>
-#include <forward_list>
+#include <ctime>
+
 class Tcache {
 private:
   static constexpr uint8_t MAX_CLASSES{18};
-  std::forward_list<int> buckets[MAX_CLASSES];
+  static constexpr uint16_t TCACHE_MAX_SIZE{512};
+  static constexpr uint8_t NORMALIZED_SIZE{0};
+  FreeNode *buckets[MAX_CLASSES];
   uint8_t counts[MAX_CLASSES];
   uint8_t map_size(size_t size) {
     if (size <= 4)
@@ -45,5 +49,27 @@ private:
       return 17;
 
     return 18;
+  }
+
+public:
+  void *allocate(size_t bytes, size_t alignment) {
+    // normalized 0 bytes size
+    if (bytes == 0) {
+      // cache hit
+      if (counts[NORMALIZED_SIZE] != 0) {
+        FreeNode *head = buckets[NORMALIZED_SIZE];
+        FreeNode *next = head->next;
+        buckets[NORMALIZED_SIZE] = next;
+        return head;
+      } else {
+      }
+    }
+    // 1. check if size can be fullfill with current sizes
+    // 2. if so are there free chunks
+    // 2a. if there are not but size do correspond to tcache sizes ask local
+    // arena or global
+    // 3. once we have free chhunks retrive the first one in the list
+    // 4. diminish counts
+    // 5. retrieve pointer
   }
 };
