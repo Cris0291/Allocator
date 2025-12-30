@@ -99,12 +99,21 @@ public:
 
     std::uintptr_t payload_addr =
         align_up(base + header_sz + trailer_sz, effective_alignment);
-    void **trailer = reinterpret_cast<void **>(payload_addr - base);
+    void **trailer = reinterpret_cast<void **>(payload_addr - trailer_sz);
 
     *trailer = raw;
     header->payload_offset = static_cast<uint32_t>(payload_addr - base);
 
     return reinterpret_cast<void *>(payload_addr);
+  }
+
+  void free_aligned_trailer(void *payload) {
+    if (!payload)
+      return;
+    std::uintptr_t p{reinterpret_cast<std::uintptr_t>(payload)};
+    void **trailer{reinterpret_cast<void **>(p - std::sizeof(void *))};
+    void *raw{*trailer};
+    // free in this paart with arena
   }
 
 private:
