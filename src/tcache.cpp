@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <ctime>
+#include <memory>
 
 class Tcache {
 private:
@@ -70,6 +71,16 @@ public:
       }
     }
     uint8_t n = map_size(bytes);
+    if (n == 18) {
+      // go to the get_arena_memory_batch
+    }
+    if (counts[n] == 0) {
+      // go to the arena
+    }
+    FreeNode *head = buckets[n];
+    --counts[n];
+    head->next = nullptr_t;
+    return std::static_cast<voiid *>(head);
     // 2. if so are there free chunks
     // 2a. if there are not but size do correspond to tcache sizes ask local
     // arena or global
@@ -111,7 +122,7 @@ public:
     if (!payload)
       return;
     std::uintptr_t p{reinterpret_cast<std::uintptr_t>(payload)};
-    void **trailer{reinterpret_cast<void **>(p - std::sizeof(void *))};
+    void **trailer{reinterpret_cast<void **>(p - sizeof(void *))};
     void *raw{*trailer};
     // free in this paart with arena
   }
