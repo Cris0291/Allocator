@@ -55,7 +55,7 @@ private:
   }
 
 public:
-  void *allocate(std::size_t bytes) {
+  void *allocate_fast(std::size_t bytes) {
     // normalized 0 bytes size
     if (bytes == 0) {
       // cache hit
@@ -80,13 +80,18 @@ public:
     FreeNode *head = buckets[n];
     --counts[n];
     head->next = nullptr_t;
-    return std::static_cast<voiid *>(head);
+    return reinterpret_cast<void *>(head);
     // 2. if so are there free chunks
     // 2a. if there are not but size do correspond to tcache sizes ask local
     // arena or global
     // 3. once we have free chhunks retrive the first one in the list
     // 4. diminish counts
     // 5. retrieve pointer
+  }
+  void free_fast(void *payload) {
+    if (!payload)
+      return;
+    // use arena maybe compute arena id before calling arena
   }
   void *allocate_aligned_trailer(size_t bytes, size_t requested_align) {
     if (requested_align == 0)
@@ -124,7 +129,7 @@ public:
     std::uintptr_t p{reinterpret_cast<std::uintptr_t>(payload)};
     void **trailer{reinterpret_cast<void **>(p - sizeof(void *))};
     void *raw{*trailer};
-    // free in this paart with arena
+    // free in this part with arena
   }
 
 private:
