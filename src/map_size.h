@@ -1,4 +1,6 @@
 #include <cstddef>
+#include <cstdint>
+#include <iterator>
 
 struct MapSizeAlignment {
   std::size_t size;
@@ -11,4 +13,6 @@ constexpr MapSizeAlignment map_info[] = {
     {256, 16}, {320, 16}, {384, 16}, {448, 16}, {512, 64},
 };
 
-constexpr std::size_t NUM_CLASSES = sizeof(map_info) / sizeof(map_info[0]);
+constexpr std::size_t NUM_CLASSES = std::size(map_info);
+constexpr std::size_t ALLOC_MIN_ALIGNMENT{alignof(std::max_align_t)};
+constexpr uint8_t NO_CLASS{0xff};

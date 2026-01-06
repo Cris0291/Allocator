@@ -1,10 +1,10 @@
 #include "chunk.h"
+#include "map_size.h"
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <ctime>
-#include <memory>
 
 class Tcache {
 private:
@@ -13,49 +13,14 @@ private:
   static constexpr uint8_t NORMALIZED_SIZE{0};
   FreeNode *buckets[MAX_CLASSES];
   uint8_t counts[MAX_CLASSES];
-  uint8_t map_size(std::size_t size) {
-    if (size <= 4)
-      return 0;
-    if (size <= 8)
-      return 1;
-    if (size <= 16)
-      return 2;
-    if (size <= 24)
-      return 3;
-    if (size <= 32)
-      return 4;
-    if (size <= 40)
-      return 5;
-    if (size <= 48)
-      return 6;
-    if (size <= 64)
-      return 7;
-    if (size <= 80)
-      return 8;
-    if (size <= 96)
-      return 9;
-    if (size <= 128)
-      return 10;
-    if (size <= 160)
-      return 11;
-    if (size <= 192)
-      return 12;
-    if (size <= 256)
-      return 13;
-    if (size <= 320)
-      return 14;
-    if (size <= 384)
-      return 15;
-    if (size <= 448)
-      return 16;
-    if (size <= 512)
-      return 17;
-
-    return 18;
+  uint8_t map_size(std::size_t size, size_t requested_alignment) {
+    for (int i{}; i < NUM_CLASSES; i++) {
+      auto &map_size_align = map_info[i];
+    }
   }
 
 public:
-  void *allocate_fast(std::size_t bytes) {
+  void *allocate_fast(std::size_t bytes, std::size_t requested_alignment) {
     // normalized 0 bytes size
     if (bytes == 0) {
       // cache hit
@@ -70,7 +35,7 @@ public:
         // go to thhe arena for more freeNodes
       }
     }
-    uint8_t n = map_size(bytes);
+    uint8_t n = map_size(bytes, requested_alignment);
     if (n == 18) {
       // go to the get_arena_memory_batch
     }
