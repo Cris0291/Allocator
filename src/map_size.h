@@ -7,6 +7,11 @@ struct MapSizeAlignment {
   std::size_t alignment;
 };
 
+struct SizeAlignmentResult {
+  bool has_size{};
+  uint8_t class_size{};
+};
+
 constexpr MapSizeAlignment map_info[] = {
     {8, 16},   {16, 16},  {24, 16},  {32, 16},  {40, 16},  {48, 16},
     {64, 16},  {80, 16},  {96, 16},  {128, 16}, {160, 16}, {192, 16},

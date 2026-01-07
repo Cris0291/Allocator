@@ -11,12 +11,24 @@ private:
   static constexpr uint8_t MAX_CLASSES{18};
   static constexpr uint16_t TCACHE_MAX_SIZE{512};
   static constexpr uint8_t NORMALIZED_SIZE{0};
+  static constexpr uint8_t MAX_WASTE_ALLOWED{4};
   FreeNode *buckets[MAX_CLASSES];
   uint8_t counts[MAX_CLASSES];
-  uint8_t map_size(std::size_t size, size_t requested_alignment) {
+  SizeAlignmentResult map_size(std::size_t size, size_t requested_alignment) {
+    bool has_size{};
     for (int i{}; i < NUM_CLASSES; i++) {
-      auto &map_size_align = map_info[i];
+      auto &size_align = map_info[i];
+      if (size_align.size >= size) {
+        has_size = true;
+        if (!(size_align.alignment >= requested_alignment))
+          continue;
+        if (size_align.size >= size * MAX_WASTE_ALLOWED) {
+          return {has_size, NO_CLASS};
+        }
+        return {has_size, size_align.size};
+      }
     }
+    return {has_size, NO_CLASS};
   }
 
 public:
