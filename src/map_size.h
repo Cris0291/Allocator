@@ -1,6 +1,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <optional>
 
 struct MapSizeAlignment {
   std::size_t size;
@@ -9,7 +10,7 @@ struct MapSizeAlignment {
 
 struct SizeAlignmentResult {
   bool has_size{};
-  uint8_t class_size{};
+  std::optional<uint8_t> idx;
 };
 
 constexpr MapSizeAlignment map_info[] = {
