@@ -5,6 +5,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <ctime>
+#include <iterator>
+#include <limits>
+#include <optional>
 
 class Tcache {
 private:
@@ -14,21 +17,44 @@ private:
   static constexpr uint8_t MAX_WASTE_ALLOWED{4};
   FreeNode *buckets[MAX_CLASSES];
   uint8_t counts[MAX_CLASSES];
-  SizeAlignmentResult map_size(std::size_t size, size_t requested_alignment) {
-    bool has_size{};
-    for (int i{}; i < NUM_CLASSES; i++) {
-      auto &size_align = map_info[i];
-      if (size_align.size >= size) {
-        has_size = true;
-        if (!(size_align.alignment >= requested_alignment))
-          continue;
-        if (size_align.size >= size * MAX_WASTE_ALLOWED) {
-          return {has_size, NO_CLASS};
-        }
-        return {has_size, size_align.size};
+  size_t min_effective_alignment(size_t requested_alignment) {
+    if (requested_alignment == 0)
+      return ALLOC_MIN_ALIGNMENT;
+    size_t min_align{std::max(requested_alignment, ALLOC_MIN_ALIGNMENT)};
+    return min_align;
+  }
+  bool within_waste(size_t class_size, size_t user_size) {
+    double threshold_d{static_cast<double>(user_size) * MAX_WASTE_ALLOWED};
+    // Potentailly a probblem should thhis be treted as an alignment or size
+    // missmatch
+    if (threshold_d > static_cast<double>(std::numeric_limits<size_t>::max()))
+      return false;
+    size_t threshold_s{static_cast<size_t>(threshold_d)};
+    return class_size <= threshold_s;
+  }
+  SizeAlignmentResult map_size(std::size_t user_size,
+                               size_t requested_alignment) {
+    size_t new_alignment{min_effective_alignment(requested_alignment)};
+
+    auto it{std::lower_bound(
+        std::begin(map_info), std::end(map_info), user_size,
+        [](const MapSizeAlignment &ms, size_t val) { return ms.size <= val; })};
+
+    bool has_size{it != std::end(map_info)};
+    if (!has_size)
+      return {false, std::nullopt};
+
+    for (; it != std::end(map_info); ++it) {
+      size_t size{it->size};
+      size_t alignment{it->alignment};
+      if (alignment < requested_alignment)
+        continue;
+      if (!within_waste(size, user_size)) {
+        return {true, std::nullopt};
       }
+      size_t idx = std::distance(std::begin(map_info), it);
+      return {true, static_cast<uint8_t>(idx)};
     }
-    return {has_size, NO_CLASS};
   }
 
 public:
