@@ -11,12 +11,11 @@
 
 class Tcache {
 private:
-  static constexpr uint8_t MAX_CLASSES{18};
   static constexpr uint16_t TCACHE_MAX_SIZE{512};
   static constexpr uint8_t NORMALIZED_SIZE{0};
   static constexpr uint8_t MAX_WASTE_ALLOWED{4};
-  FreeNode *buckets[MAX_CLASSES];
-  uint8_t counts[MAX_CLASSES];
+  FreeNode *buckets[NUM_CLASSES];
+  uint8_t counts[NUM_CLASSES];
   size_t min_effective_alignment(size_t requested_alignment) {
     if (requested_alignment == 0)
       return ALLOC_MIN_ALIGNMENT;
@@ -73,16 +72,25 @@ public:
         // go to thhe arena for more freeNodes
       }
     }
-    uint8_t n = map_size(bytes, requested_alignment);
-    if (n == 18) {
+    SizeAlignmentResult map_result = map_size(bytes, requested_alignment);
+    if (!map_result.has_size) {
       // go to the get_arena_memory_batch
     }
-    if (counts[n] == 0) {
-      // go to the arena
+    if (map_result.has_size && !map_result.idx.has_value()) {
+      // go to the slow path
     }
+    uint8_t n{map_result.idx.value()};
+
+    if (counts[n] == 0) {
+      // ask for more block empty bin
+      FreeNode *fill_bin{get_arena_memory_batch()};
+      buckets[n] = fill_bin;
+      ++counts[n];
+    }
+
     FreeNode *head = buckets[n];
     --counts[n];
-    head->next = nullptr_t;
+    head->next = nullptr;
     return reinterpret_cast<void *>(head);
     // 2. if so are there free chunks
     // 2a. if there are not but size do correspond to tcache sizes ask local
@@ -136,7 +144,11 @@ public:
   }
 
 private:
-  void *get_arena_memory_batch() {}
+  FreeNode *get_arena_memory_batch() {
+    // arena will return a void* linked list size of list is to be determined
+    void *arena_result;
+    return static_cast<FreeNode *>(arena_result);
+  }
   std::uintptr_t align_up(std::uintptr_t x, size_t a) {
     assert((a & (a - 1)) == 0);
     return (x + (a - 1)) & ~(uintptr_t)(a - 1);
