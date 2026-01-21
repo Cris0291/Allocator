@@ -1,19 +1,24 @@
+#include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <stdatomic.h>
 
 class SuperBlock {
   static constexpr std::size_t span_size{64 * 1024};
   static constexpr std::size_t SLOT_SIZE{16};
   static constexpr std::size_t HEADER_ALIGNMENT{
       16}; // Could be omitted we will see
+  std::size_t total_number_slots;
+  std::atomic_uintptr_t bitmap;
   struct SuperBlockHeader {
     uint32_t class_id;
     uint32_t span_size;
     uint32_t slot_size;
     uint32_t n_slot;
     uint32_t free_count;
+    uint32_t payload_ptr;
   };
   std::size_t bitmap_size_convergence_routine(std::size_t header_sz) {
     std::size_t N0 = std::floor(span_size - header_sz) / SLOT_SIZE;
@@ -38,6 +43,7 @@ public:
     std::size_t header_aligned_sz{align_up(super_block_header_sz, 16)};
     // calulate payload size
     std::size_t slots{bitmap_size_convergence_routine(header_aligned_sz)};
+    total_number_slots = slots;
     std::size_t bitmap_sz{(slots / 64) * 8};
     std::size_t payload_align_sz{align_up(header_aligned_sz + bitmap_sz, 16)};
     // allocate usiing  os api for a span_size memory - span_size
@@ -50,8 +56,10 @@ public:
     header->slot_size = SLOT_SIZE;
     header->n_slot = slots;
     header->free_count = slots;
+    header->payload_ptr = payload_align_sz;
 
     std::uintptr_t bitmap_ptr{base + header_aligned_sz};
+    bitmap = bitmap_ptr;
     // initialiize bitmap to 0's
     void *bitmap_vptr{reinterpret_cast<void *>(bitmap_ptr)};
     std::memset(bitmap_vptr, 0, bitmap_sz);
@@ -61,5 +69,8 @@ public:
     void *bitmap_padding_vptr{reinterpret_cast<void *>(bitmap_padding)};
     // this is not right check  it later
     std::memset(bitmap_padding_vptr, 1, sizeof(bitmap_padding));
+  }
+  void free_atomic_span(std::uint64_t hint_word = 0) {
+    std::atomic_load(&bitmap[hint_word], std::memory_order_aquire);
   }
 };
