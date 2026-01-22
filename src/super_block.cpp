@@ -70,7 +70,7 @@ public:
     // this is not right check  it later
     std::memset(bitmap_padding_vptr, 1, sizeof(bitmap_padding));
   }
-  void free_atomic_span(std::uint64_t hint_word = 0) {
+  void allocate_atomic_span(std::uint64_t hint_word = 0) {
     std::atomic_load(&bitmap[hint_word], std::memory_order_aquire);
   }
 };
