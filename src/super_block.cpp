@@ -1,9 +1,9 @@
+#include "atomic_word_ops.h"
 #include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <stdatomic.h>
 
 class SuperBlock {
   static constexpr std::size_t span_size{64 * 1024};
@@ -11,7 +11,7 @@ class SuperBlock {
   static constexpr std::size_t HEADER_ALIGNMENT{
       16}; // Could be omitted we will see
   std::size_t total_number_slots;
-  std::atomic_uintptr_t bitmap;
+  std::uint64_t *bitmap{};
   struct SuperBlockHeader {
     uint32_t class_id;
     uint32_t span_size;
@@ -59,7 +59,7 @@ public:
     header->payload_ptr = payload_align_sz;
 
     std::uintptr_t bitmap_ptr{base + header_aligned_sz};
-    bitmap = bitmap_ptr;
+    bitmap = &bitmap_ptr;
     // initialiize bitmap to 0's
     void *bitmap_vptr{reinterpret_cast<void *>(bitmap_ptr)};
     std::memset(bitmap_vptr, 0, bitmap_sz);
@@ -71,6 +71,6 @@ public:
     std::memset(bitmap_padding_vptr, 1, sizeof(bitmap_padding));
   }
   void allocate_atomic_span(std::uint64_t hint_word = 0) {
-    std::atomic_load(&bitmap[hint_word], std::memory_order_aquire);
+    std::uint64_t{atomic_word_load(&bitmap[hint_word])};
   }
 };
