@@ -1,4 +1,5 @@
 #include "atomic_word_ops.h"
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <cstddef>
@@ -10,6 +11,8 @@ class SuperBlock {
   static constexpr std::size_t SLOT_SIZE{16};
   static constexpr std::size_t HEADER_ALIGNMENT{
       16}; // Could be omitted we will see
+  static constexpr std::size_t BIT_COUNT{64};
+  std::array<std::uint64_t, BIT_COUNT> bitmasks{};
   std::size_t total_number_slots;
   std::uint64_t *bitmap{};
   struct SuperBlockHeader {
@@ -36,9 +39,19 @@ class SuperBlock {
   std::uintptr_t align_up(std::uintptr_t x, std::size_t size) {
     return (x + (size - 1) & ~(size - 1));
   }
+  std::array<std::uint64_t, BIT_COUNT> make_bitmasks() {
+    std::array<std::uint64_t, BIT_COUNT> bitmasks_array{};
+    for (int i{}; i < BIT_COUNT; i++) {
+      std::uint64_t bitmask{1ULL << i};
+      bitmasks_array[i] = bitmask;
+    }
+
+    return bitmasks_array;
+  }
 
 public:
   SuperBlock(uint32_t class_id) {
+    bitmasks = make_bitmasks();
     std::size_t super_block_header_sz{sizeof(SuperBlockHeader)};
     std::size_t header_aligned_sz{align_up(super_block_header_sz, 16)};
     // calulate payload size
@@ -70,7 +83,18 @@ public:
     // this is not right check  it later
     std::memset(bitmap_padding_vptr, 1, sizeof(bitmap_padding));
   }
-  void allocate_atomic_span(std::uint64_t hint_word = 0) {
-    std::uint64_t{atomic_word_load(&bitmap[hint_word])};
+  void allocate_atomic_span(std::size_t hint_word = 0) {
+    std::uint64_t old{atomic_word_load(&bitmap[hint_word])};
+    std::uint64_t free{1};
+
+    while () {
+      for (std::uint64_t mask : bitmasks) {
+        free = (~old) & mask;
+        if (free != 0)
+      }
+    }
   }
+
+private:
+  std::uint64_t find_freebit(std::size_t start) {}
 };
