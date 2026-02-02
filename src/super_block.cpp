@@ -20,9 +20,10 @@ class SuperBlock {
     uint32_t span_size;
     uint32_t slot_size;
     uint32_t n_slot;
-    uint32_t free_count;
-    uint32_t payload_ptr;
+    std::atomic<std::uint32_t> free_count;
+    std::uintptr_t payload_ptr;
   };
+  SuperBlockHeader *super_block_header;
   std::size_t bitmap_size_convergence_routine(std::size_t header_sz) {
     std::size_t N0 = std::floor(span_size - header_sz) / SLOT_SIZE;
     double N1{};
@@ -58,12 +59,14 @@ public:
     std::size_t slots{bitmap_size_convergence_routine(header_aligned_sz)};
     total_number_slots = slots;
     std::size_t bitmap_sz{(slots / 64) * 8};
-    std::size_t payload_align_sz{align_up(header_aligned_sz + bitmap_sz, 16)};
+    std::uintptr_t payload_align_sz{
+        align_up(header_aligned_sz + bitmap_sz, 16)};
     // allocate usiing  os api for a span_size memory - span_size
     void *raw;
 
     std::uintptr_t base{reinterpret_cast<uintptr_t>(raw)};
     SuperBlockHeader *header{reinterpret_cast<SuperBlockHeader *>(base)};
+    super_block_header = header;
     header->class_id = class_id;
     header->span_size = span_size;
     header->slot_size = SLOT_SIZE;
@@ -83,18 +86,38 @@ public:
     // this is not right check  it later
     std::memset(bitmap_padding_vptr, 1, sizeof(bitmap_padding));
   }
-  void allocate_atomic_span(std::size_t hint_word = 0) {
-    std::uint64_t old{atomic_word_load(&bitmap[hint_word])};
-    std::uint64_t free{1};
+  void *allocate_atomic_span(std::size_t hint_word = 0) {
+    std::size_t bitmap_words{total_number_slots / 64};
+    if (hint_word > bitmap_words)
+      hint_word = 0;
 
-    while () {
-      for (std::uint64_t mask : bitmasks) {
-        free = (~old) & mask;
-        if (free != 0)
+    while (hint_word <= bitmap_words) {
+      std::uint64_t old_word = atomic_word_load(&bitmap[hint_word]);
+      for (const auto &bitmask : bitmasks) {
+        std::uint64_t free_mask = (~old_word) & bitmask;
+        if (free_mask == 0)
+          continue;
+        int bit = __builtin_ctzll(free_mask);
+        std::uint64_t single_mask = 1ULL << bit;
+
+        std::uint64_t prev =
+            atomic_word_fetch_or(&bitmap[hint_word], single_mask);
+        if ((prev & single_mask) == 0) {
+          super_block_header->free_count.fetch_sub(1);
+          // TODO check if span is empty
+          std::size_t slot_index = hint_word * 64 + bit;
+          std::uintptr_t payload =
+              super_block_header->payload_ptr + slot_index * SLOT_SIZE;
+          // How should i return a hint also
+          return reinterpret_cast<void *>(payload);
+        } else {
+          continue;
+        }
       }
+      ++hint_word;
     }
+    // if reached this is full TODO
   }
 
-private:
-  std::uint64_t find_freebit(std::size_t start) {}
+  void free_atomic_span() {}
 };
