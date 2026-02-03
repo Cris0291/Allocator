@@ -119,5 +119,19 @@ public:
     // if reached this is full TODO
   }
 
-  void free_atomic_span() {}
+  void free_atomic_span(void *payload) {
+    std::uintptr_t p{reinterpret_cast<std::uintptr_t>(payload)};
+    std::uintptr_t offset{super_block_header->payload_ptr - p};
+    // TODO 0 <= offset < N * SLOT_SIZE also offset % SLOT_SIZE
+    std::uintptr_t slot_index{offset / SLOT_SIZE};
+    std::uintptr_t word_index{slot_index / 64};
+    std::uintptr_t bit{slot_index % 64};
+    std::uint64_t single_mask = 1ULL << bit;
+    std::uint64_t word{atomic_word_load(&bitmap[word_index])};
+    std::uint64_t prev{atomic_word_fetch_and(&word, ~single_mask)};
+    // if((prev & single_mask) == 0) double free corruption hanlde it
+    // TODO handle over addtion surpasing the available amount of slots
+    super_block_header->free_count.fetch_add(1);
+    return;
+  }
 };
