@@ -38,7 +38,7 @@ class SuperBlock {
     return N0;
   }
   std::uintptr_t align_up(std::uintptr_t x, std::size_t size) {
-    return (x + (size - 1) & ~(size - 1));
+    return (x + (size - 1)) & ~(size - 1);
   }
   std::array<std::uint64_t, BIT_COUNT> make_bitmasks() {
     std::array<std::uint64_t, BIT_COUNT> bitmasks_array{};
