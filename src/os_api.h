@@ -1,6 +1,10 @@
 #include <cstddef>
 #include <cstdint>
+#include <unistd.h>
 namespace os_api {
+
+const auto PAGE_SIZE = sysconf(_SC_PAGESIZE);
+
 enum class OsResult {
   Ok,
   OutOfMemory,
@@ -43,5 +47,6 @@ OsResult advice(void *addr, std::size_t length, Advice advice);
 
 std::size_t query_commited_memory(void *addr, std::size_t size);
 std::uintptr_t align_up(std::uintptr_t addr, std::size_t size);
+std::size_t round_up_page(std::size_t size);
 
 } // namespace os_api
