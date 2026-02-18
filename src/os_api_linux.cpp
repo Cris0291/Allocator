@@ -21,4 +21,22 @@ os_api::OsResult os_api::reserve_address_space(std::size_t size,
   std::uintptr_t base{reinterpret_cast<std::uintptr_t>(mapped)};
 
   std::uintptr_t aligned_base{os_api::align_up(base, alignment)};
+
+  std::uintptr_t prefix{aligned_base - base};
+  // is this right to use mmaped also is normal size or rounded
+  munmap(mapped, prefix);
+
+  std::uintptr_t suffix{(base + mmap_len) - (aligned_base + size)};
+  void *mapped_suffix{reinterpret_cast<void *>((aligned_base + size))};
+  munmap(mapped_suffix, suffix);
+
+  out.addr = (void *)aligned_base;
+  out.size = aligned_base + size;
+  out.committed = 0;
+  out.numa_node = -1;
+}
+
+os_api::OsResult os_api::release_addresss_space(void *addr,
+                                                std::size_t length) {
+  munmap(addr, length);
 }
