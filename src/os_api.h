@@ -6,7 +6,7 @@ namespace os_api {
 const auto PAGE_SIZE = sysconf(_SC_PAGESIZE);
 
 enum class OsResult {
-  Ok,
+  Success,
   OutOfMemory,
   NotSupported,
   InvalidArgument,

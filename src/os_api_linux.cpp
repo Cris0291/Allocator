@@ -34,9 +34,17 @@ os_api::OsResult os_api::reserve_address_space(std::size_t size,
   out.size = aligned_base + size;
   out.committed = 0;
   out.numa_node = -1;
+
+  return os_api::OsResult::Success;
 }
 
 os_api::OsResult os_api::release_addresss_space(void *addr,
                                                 std::size_t length) {
-  munmap(addr, length);
+  if (munmap(addr, length) == 0) {
+    return os_api::OsResult::Success;
+  }
+
+  return os_api::OsResult::OutOfMemory;
 }
+
+os_api::OsResult os_api::commit_memory(void *addr, std::size_t length) {}
