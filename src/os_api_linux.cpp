@@ -49,14 +49,19 @@ os_api::OsResult os_api::release_addresss_space(void *addr,
 
 os_api::OsResult os_api::commit_memory(void *addr, std::size_t length) {
   std::uintptr_t base_addr{reinterpret_cast<std::uintptr_t>(addr)};
-  if ((base_addr % PAGE_SIZE) != 0)
+
+  if ((base_addr % PAGE_SIZE) != 0 || (length & PAGE_SIZE) != 0)
     return os_api::OsResult::InvalidArgument;
+
+  volatile char *p{static_cast<volatile char *>(addr)};
 
   madvise(addr, length, MADV_WILLNEED);
 
   for (std::size_t i{}; i < length; i += PAGE_SIZE) {
-    base_addr + i = 0;
+    p[i] = 0;
   }
 
   return os_api::OsResult::Success;
 }
+
+os_api::OsResult os_api::decommit_memory(void *addr, std::size_t length) {}
