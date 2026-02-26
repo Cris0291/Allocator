@@ -48,6 +48,7 @@ os_api::OsResult os_api::release_addresss_space(void *addr,
 }
 
 os_api::OsResult os_api::commit_memory(void *addr, std::size_t length) {
+  // need to see if threads ar racing and if memory belongs to this arena
   std::uintptr_t base_addr{reinterpret_cast<std::uintptr_t>(addr)};
 
   if ((base_addr % PAGE_SIZE) != 0 || (length & PAGE_SIZE) != 0)
@@ -64,4 +65,19 @@ os_api::OsResult os_api::commit_memory(void *addr, std::size_t length) {
   return os_api::OsResult::Success;
 }
 
-os_api::OsResult os_api::decommit_memory(void *addr, std::size_t length) {}
+os_api::OsResult os_api::decommit_memory(void *addr, std::size_t length,
+                                         bool is_decom_virtual) {
+  // implement later check if this memory belongs to this arena  also
+  // check if no other threads ar racing for this memory i  have to keep
+  // implementing the whole system to gain clarity  onthis matter
+  // finally  perhaps  i will impleemnt ovrloads of this functions in which i
+  // release just virtual or physical
+
+  if (is_decom_virtual) {
+    munmap(addr, length);
+  } else {
+    madvise(addr, length, MADV_DONTNEED);
+  }
+
+  return os_api::OsResult::Success;
+}

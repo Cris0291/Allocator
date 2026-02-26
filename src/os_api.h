@@ -38,7 +38,7 @@ bool os_supports_huge_pages();
 OsResult reserve_address_space(std::size_t size, std::size_t alignment,
                                MemSpan &out);
 OsResult commit_memory(void *addr, std::size_t length);
-OsResult decommit_memory(void *addr, std::size_t length);
+OsResult decommit_memory(void *addr, std::size_t length, bool is_decom_virtual);
 OsResult release_addresss_space(void *addr, std::size_t length);
 OsResult reserve_with_hugh_pages(std::size_t size, std::size_t alignment,
                                  MemSpan &out);
