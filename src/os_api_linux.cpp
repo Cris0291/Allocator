@@ -70,7 +70,7 @@ os_api::OsResult os_api::decommit_memory(void *addr, std::size_t length,
   // implement later check if this memory belongs to this arena  also
   // check if no other threads ar racing for this memory i  have to keep
   // implementing the whole system to gain clarity  onthis matter
-  // finally  perhaps  i will impleemnt ovrloads of this functions in which i
+  // finally  perhaps  i will implemnt ovrloads of this functions in which i
   // release just virtual or physical
 
   if (is_decom_virtual) {
@@ -80,4 +80,57 @@ os_api::OsResult os_api::decommit_memory(void *addr, std::size_t length,
   }
 
   return os_api::OsResult::Success;
+}
+
+os_api::OsResult os_api::set_protection(void *addr, std::size_t length,
+                                        int prop_flags) {
+  // as before need to take into account previous concerns aslo
+  // error handling
+  std::uintptr_t base_addr{reinterpret_cast<std::uintptr_t>(addr)};
+  if ((base_addr % PAGE_SIZE) != 0 || (length % PAGE_SIZE) != 0)
+    return os_api::OsResult::InvalidArgument;
+
+  int res = mprotect(addr, length, prop_flags);
+
+  if (!res) {
+    return os_api::OsResult::Success;
+  } else {
+    // handle  error better still have to construct that
+    return os_api::OsResult::InvalidArgument;
+  }
+}
+
+int get_advice(os_api::Advice advice) {
+  int res{};
+  switch (advice) {
+  case os_api::Advice::DontNeed:
+    res = MADV_DONTNEED;
+    break;
+  case os_api::Advice::WillNeed:
+    res = MADV_WILLNEED;
+    break;
+  case os_api::Advice::HugePage:
+    res = MADV_HUGEPAGE;
+    break;
+  case os_api::Advice::NoHugePage:
+    res = MADV_NOHUGEPAGE;
+    break;
+  case os_api::Advice::Normal:
+    res = MADV_NORMAL;
+    break;
+  case os_api::Advice::Randomize:
+    res = MADV_RANDOM;
+    break;
+  default:
+    res = MADV_NORMAL;
+    break;
+  }
+}
+
+os_api::OsResult os_api::advice(void *addr, std::size_t length, Advice advice) {
+  std::uintptr_t base_addr{reinterpret_cast<std::uintptr_t>(addr)};
+  if ((base_addr % PAGE_SIZE) != 0 || (length % PAGE_SIZE) != 0)
+    return os_api::OsResult::InvalidArgument;
+
+  get_advice(advice);
 }
