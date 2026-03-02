@@ -125,12 +125,42 @@ int get_advice(os_api::Advice advice) {
     res = MADV_NORMAL;
     break;
   }
+
+  return res;
 }
 
 os_api::OsResult os_api::advice(void *addr, std::size_t length, Advice advice) {
+  // Check advice availability
+  // Improve error handling
   std::uintptr_t base_addr{reinterpret_cast<std::uintptr_t>(addr)};
   if ((base_addr % PAGE_SIZE) != 0 || (length % PAGE_SIZE) != 0)
     return os_api::OsResult::InvalidArgument;
 
-  get_advice(advice);
+  int adv = get_advice(advice);
+
+  int res = madvise(addr, length, adv);
+
+  if (res) {
+    return os_api::OsResult::InvalidArgument;
+  }
+
+  return os_api::OsResult::Success;
+}
+
+std::size_t os_api::query_commited_memory(void *addr, std::size_t size) {
+  // consider that there are other system calls that could query
+  std::uintptr_t base_addr{reinterpret_cast<std::uintptr_t>(addr)};
+  if ((base_addr % PAGE_SIZE) != 0 || (size % PAGE_SIZE) != 0)
+    return -1;
+
+  unsigned char *vec{};
+  int res = mincore(addr, size, vec);
+  if (res)
+    return -1;
+  std::size_t resident_pages{};
+  for (int i{}; i < size; i++) {
+    resident_pages += (vec[i] & 1) != 0 ? 1 : 0;
+  }
+
+  return resident_pages * PAGE_SIZE;
 }
