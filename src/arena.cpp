@@ -1,4 +1,5 @@
 #include "os_api.h"
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 
@@ -21,6 +22,14 @@ class arena {
     std::uint32_t stats_off;
     std::uint64_t header_checksum;
     std::uint8_t reserved[64];
+  };
+
+  struct arena_stats {
+    std::atomic_uint_fast64_t alloc_count;
+    std::atomic_uint_fast64_t free_count;
+    std::atomic_uint_fast64_t bytes_allocated;
+    std::atomic_uint_fast64_t bytes_free;
+    std::uint8_t padding[(64 - ((4 * sizeof(uint64_t)) % 64)) % 64];
   }
 
   public : arena(int arena_size = 256)
