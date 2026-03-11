@@ -5,7 +5,7 @@
 
 class arena {
   int default_arena_size;
-  struct arena_header {
+  struct ArenaHeader {
     std::uint32_t version;
     std::uint32_t magic;
     std::uint32_t flags;
@@ -24,15 +24,23 @@ class arena {
     std::uint8_t reserved[64];
   };
 
-  struct arena_stats {
+  struct PerClassMeta {
+    std::uint32_t block_size;
+    std::uint32_t freelist_head_off;
+    std::uint32_t page_owned;
+    std::uint32_t free_count;
+  };
+
+  struct ArenaStats {
     std::atomic_uint_fast64_t alloc_count;
     std::atomic_uint_fast64_t free_count;
     std::atomic_uint_fast64_t bytes_allocated;
     std::atomic_uint_fast64_t bytes_free;
     std::uint8_t padding[(64 - ((4 * sizeof(uint64_t)) % 64)) % 64];
-  }
+  };
 
-  public : arena(int arena_size = 256)
+public:
+  arena(int arena_size = 256, std::uint32_t id, std::uint32_t core)
       : default_arena_size{arena_size} {
     if (default_arena_size <= 0 || default_arena_size > 256)
       default_arena_size = 256;
@@ -41,5 +49,11 @@ class arena {
 
     os_api::reserve_address_space(arena_bytes + os_api::PAGE_SIZE,
                                   os_api::PAGE_SIZE, mem_info);
+
+    void *arena_base{mem_info.addr};
+    ArenaHeader *arena_header{reinterpret_cast<ArenaHeader *>(arena_base)};
+    // goiing to use an initializer/orchestrator in order to create an arena per
+    // core
+    arena_header->total_size = arena_bytes;
   }
 };
