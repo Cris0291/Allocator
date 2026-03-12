@@ -4,7 +4,7 @@
 #include <cstdint>
 
 class arena {
-  int default_arena_size;
+  std::size_t default_arena_size;
   struct ArenaHeader {
     std::uint32_t version;
     std::uint32_t magic;
@@ -40,11 +40,12 @@ class arena {
   };
 
 public:
-  arena(int arena_size = 256, std::uint32_t id, std::uint32_t core)
+  arena(std::uint32_t id, std::uint32_t core, std::uint32_t flags_config,
+        std::size_t arena_size = 256)
       : default_arena_size{arena_size} {
     if (default_arena_size <= 0 || default_arena_size > 256)
       default_arena_size = 256;
-    std::size_t arena_bytes{256 * 1024};
+    std::size_t arena_bytes{default_arena_size * 1024};
     os_api::MemSpan mem_info;
 
     os_api::reserve_address_space(arena_bytes + os_api::PAGE_SIZE,
@@ -55,5 +56,17 @@ public:
     // goiing to use an initializer/orchestrator in order to create an arena per
     // core
     arena_header->total_size = arena_bytes;
+    arena_header->arena_id = id;
+    arena_header->owner_core = core;
+    arena_header->flags = flags_config;
+    arena_header->total_size = arena_bytes;
+    arena_header->usable_offset = os_api::PAGE_SIZE;
+    arena_header->usable_size = default_arena_size;
+    // offset to hot/dynamiic metadata could be related to the five classes for
+    // now a place holder
+    arena_header->extend_root_off = os_api::PAGE_SIZE;
+    arena_header->per_class_count = 5;
+    // point to a table of per class metadata
+    arena_header->per_class_off = 11110;
   }
 };
