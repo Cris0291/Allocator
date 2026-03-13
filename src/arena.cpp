@@ -4,7 +4,7 @@
 #include <cstdint>
 
 class arena {
-  std::size_t default_arena_size;
+  std::size_t default_arena_size{256};
   struct ArenaHeader {
     std::uint32_t version;
     std::uint32_t magic;
@@ -40,18 +40,16 @@ class arena {
   };
 
 public:
-  arena(std::uint32_t id, std::uint32_t core, std::uint32_t flags_config,
-        std::size_t arena_size = 256)
-      : default_arena_size{arena_size} {
-    if (default_arena_size <= 0 || default_arena_size > 256)
-      default_arena_size = 256;
+  arena(std::uint32_t id, std::uint32_t core, std::uint32_t flags_config) {
     std::size_t arena_bytes{default_arena_size * 1024};
+    std::size_t arena_bytes_with_header{arena_bytes + (2 * os_api::PAGE_SIZE)};
     os_api::MemSpan mem_info;
 
-    os_api::reserve_address_space(arena_bytes + os_api::PAGE_SIZE,
-                                  os_api::PAGE_SIZE, mem_info);
+    os_api::reserve_address_space(arena_bytes_with_header, os_api::PAGE_SIZE,
+                                  mem_info);
 
     void *arena_base{mem_info.addr};
+    std::uintptr_t base{reinterpret_cast<std::uintptr_t>(arena_base)};
     ArenaHeader *arena_header{reinterpret_cast<ArenaHeader *>(arena_base)};
     // goiing to use an initializer/orchestrator in order to create an arena per
     // core
@@ -67,6 +65,16 @@ public:
     arena_header->extend_root_off = os_api::PAGE_SIZE;
     arena_header->per_class_count = 5;
     // point to a table of per class metadata
-    arena_header->per_class_off = 11110;
+    arena_header->per_class_off = 4096;
+    arena_header->per_class_count = 5;
+    // i have to calculate some offset yet this is aplace hollder
+    arena_header->remote_queue_off = 11;
+    arena_header->stats_off = 11;
+    arena_header->header_checksum = 1;
+
+    for (int i{}; arena_header->per_class_count; i++) {
+      auto entry =
+          base + arena_header->per_class_off + (i * sizeof(PerClassMeta));
+    }
   }
 };
