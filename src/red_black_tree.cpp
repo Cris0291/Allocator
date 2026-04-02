@@ -55,4 +55,31 @@ inline void rb_change_child(RBNode *old_node, RBNode *new_node, RBNode *parent,
   } else {
     root->rb_root = new_node;
   }
+};
+
+inline void rb_rotate_set_parent(RBNode *old_node, RBNode *new_node,
+                                 RBRoot *root, int color) {
+  RBNode *parent{get_rb_red_parent(old_node)};
+  new_node->rb_parent_color = old_node->rb_parent_color;
+  rb_set_parent_color(old_node, new_node, color);
+  rb_change_child(old_node, new_node, parent, root);
+};
+
+inline void rb_link_node(RBNode *rb_node, RBNode *parent, RBNode **link) {
+  rb_node->rb_parent_color = reinterpret_cast<unsigned long>(parent);
+
+  rb_node->left = nullptr;
+  rb_node->right = nullptr;
+
+  *link = rb_node;
+};
+
+// resolve insert violations
+inline void rb_insert_color(RBNode *rb_node, RBRoot *root) {
+  RBNode *parent{get_rb_parent(rb_node)};
+  RBNode *grandparent{};
+  RBNode *tmp;
+
+  while (true) {
+  };
 }
