@@ -1,3 +1,4 @@
+#include <cstddef>
 enum class RBColor : unsigned long { Red, Black };
 
 // this is based on the kernel version of a rb tree
@@ -76,10 +77,27 @@ inline void rb_link_node(RBNode *rb_node, RBNode *parent, RBNode **link) {
 
 // resolve insert violations
 inline void rb_insert_color(RBNode *rb_node, RBRoot *root) {
-  RBNode *parent{get_rb_parent(rb_node)};
+  RBNode *parent{get_rb_red_parent(rb_node)};
   RBNode *grandparent{};
   RBNode *tmp;
 
   while (true) {
+    // parent does noit exist we are at root either because of a push in case 1
+    // or tree was empty
+    if (!parent) {
+      rb_set_parent_color(rb_node, nullptr, static_cast<int>(RBColor::Black));
+    }
+
+    if (is_rb_black(parent))
+      break;
+
+    // Parent is red at this point cannot be root and gparent exists and is
+    // black
+    grandparent = get_rb_red_parent(parent);
+    tmp = grandparent->right;
+
+    // parent is left
+    if (tmp != parent) {
+    }
   };
 }
