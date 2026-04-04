@@ -82,10 +82,11 @@ inline void rb_insert_color(RBNode *rb_node, RBRoot *root) {
   RBNode *tmp;
 
   while (true) {
-    // parent does noit exist we are at root either because of a push in case 1
+    // parent does not exist we are at root either because of a push in case 1
     // or tree was empty
     if (!parent) {
       rb_set_parent_color(rb_node, nullptr, static_cast<int>(RBColor::Black));
+      break;
     }
 
     if (is_rb_black(parent))
@@ -139,8 +140,50 @@ inline void rb_insert_color(RBNode *rb_node, RBRoot *root) {
 
       rb_rotate_set_parents(grandparent, parent, root,
                             static_cast<int>(RBColor::Red));
+      break;
     } else {
       // Mirror for parent right
+      tmp = grandparent->left;
+      if (tmp && is_rb_red(tmp)) {
+        // Mirror case 1
+        rb_set_parent_color(parent, grandparent,
+                            static_cast<int>(RBColor::Black));
+        rb_set_parent_color(tmp, grandparent, static_cast<int>(RBColor::Black));
+
+        rb_node = grandparent;
+        parent = get_rb_parent(rb_node);
+
+        rb_set_parent_color(rb_node, parent, static_cast<int>(RBColor::Red));
+        continue;
+      }
+
+      tmp = parent->left;
+
+      if (tmp == rb_node) {
+        // Mirror case 2
+        tmp = rb_node->right;
+        parent->left = tmp;
+        rb_node->right = parent;
+
+        if (tmp) {
+          rb_set_parent_color(tmp, parent, static_cast<int>(RBColor::Black));
+        }
+
+        rb_set_parent_color(parent, rb_node, static_cast<int>(RBColor::Red));
+        parent = rb_node;
+        tmp = rb_node->left;
+      }
+      // Mirror case 3
+      grandparent->right = tmp;
+      parent->left = grandparent;
+
+      if (tmp) {
+        rb_set_parent_color(tmp, grandparent, static_cast<int>(RBColor::Black));
+      }
+
+      rb_rotate_set_parents(grandparent, parent, root,
+                            static_cast<int>(RBColor::Red));
+      break;
     }
   };
 }
