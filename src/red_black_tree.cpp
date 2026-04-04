@@ -58,9 +58,9 @@ inline void rb_change_child(RBNode *old_node, RBNode *new_node, RBNode *parent,
   }
 };
 
-inline void rb_rotate_set_parent(RBNode *old_node, RBNode *new_node,
-                                 RBRoot *root, int color) {
-  RBNode *parent{get_rb_red_parent(old_node)};
+inline void rb_rotate_set_parents(RBNode *old_node, RBNode *new_node,
+                                  RBRoot *root, int color) {
+  RBNode *parent{get_rb_parent(old_node)};
   new_node->rb_parent_color = old_node->rb_parent_color;
   rb_set_parent_color(old_node, new_node, color);
   rb_change_child(old_node, new_node, parent, root);
@@ -98,6 +98,49 @@ inline void rb_insert_color(RBNode *rb_node, RBRoot *root) {
 
     // parent is left
     if (tmp != parent) {
+
+      if (tmp && is_rb_red(tmp)) {
+        // case 1 parent red uncle red and node red
+        rb_set_parent_color(tmp, grandparent, static_cast<int>(RBColor::Black));
+        rb_set_parent_color(parent, grandparent,
+                            static_cast<int>(RBColor::Black));
+
+        rb_node = grandparent;
+        parent = get_rb_parent(rb_node);
+
+        rb_set_parent_color(rb_node, parent, static_cast<int>(RBColor::Red));
+        continue;
+      }
+      tmp = parent->right;
+      // case 2 parent red node red and right child of parent uncle black
+      // this case will leave in a temporary broken state untill case 3
+      if (rb_node == tmp) {
+        // left rotate node with parent
+        tmp = rb_node->left;
+        parent->right = tmp;
+        rb_node->left = parent;
+
+        if (tmp) {
+          rb_set_parent_color(tmp, parent, static_cast<int>(RBColor::Black));
+        }
+
+        rb_set_parent_color(parent, rb_node, static_cast<int>(RBColor::Red));
+
+        parent = rb_node;
+        tmp = rb_node->right;
+      }
+      // case 3 could be a stad alone case or fall through directly from case 2
+      grandparent->left = tmp;
+      parent->right = grandparent;
+
+      if (tmp) {
+        rb_set_parent_color(tmp, grandparent, static_cast<int>(RBColor::Black));
+      }
+
+      rb_rotate_set_parents(grandparent, parent, root,
+                            static_cast<int>(RBColor::Red));
+    } else {
+      // Mirror for parent right
     }
   };
 }
