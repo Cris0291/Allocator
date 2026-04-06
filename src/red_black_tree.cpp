@@ -1,4 +1,5 @@
 #include <cstddef>
+#include <memory>
 enum class RBColor : unsigned long { Red, Black };
 
 // this is based on the kernel version of a rb tree
@@ -186,4 +187,77 @@ inline void rb_insert_color(RBNode *rb_node, RBRoot *root) {
       break;
     }
   };
+}
+
+inline RBNode *rb_erase(RBNode *node, RBRoot *root) {
+  RBNode *child = node->right;
+  RBNode *tmp = node->left;
+  RBNode *parent;
+  RBNode *rebalance;
+  unsigned long pc;
+
+  if (!tmp) {
+    // Case 1 node to be deleted only has right child or null
+    // This is based on the kernel so i am using the same trick
+    // child must be red otherwise it would not be balanced with the left
+    // include and parent must be black
+    pc = node->rb_parent_color;
+    parent = reinterpret_cast<RBNode *>(pc & ~3UL);
+    rb_change_child(node, child, parent, root);
+
+    if (child) {
+      child->rb_parent_color = pc;
+      rebalance = nullptr;
+    } else {
+      rebalance = (pc & 1) ? parent : nullptr;
+    }
+  } else if (!child) {
+    // Case 1b mirror of the previous
+    pc = node->rb_parent_color;
+    tmp->rb_parent_color = pc;
+    parent = reinterpret_cast<RBNode *>(pc & ~3UL);
+    rb_change_child(node, tmp, parent, root);
+    rebalance = nullptr;
+  } else {
+    // Case 2 and 3 node has both left and right
+    RBNode *succesor = child;
+    RBNode *child2;
+
+    tmp = child->left;
+    if (!tmp) {
+      parent = succesor;
+      child2 = succesor->right;
+    } else {
+      // Case 3
+      do {
+        parent = succesor;
+        succesor = tmp;
+        tmp = tmp->left;
+      } while (tmp);
+
+      child2 = succesor->right;
+
+      parent->left = child2;
+      succesor->right = child;
+      rb_set_parent(child, succesor);
+    }
+    // Both case 2 and 3 converge here
+    tmp = node->left;
+    succesor->left = tmp;
+    rb_set_parent(tmp, succesor);
+
+    pc = node->rb_parent_color;
+    tmp = reinterpret_cast<RBNode *>(pc & ~3UL);
+    rb_change_child(node, succesor, tmp, root);
+
+    if (child) {
+      rb_set_parent_color(child2, parent, static_cast<int>(RBColor::Black));
+      rebalance = nullptr;
+    } else {
+      rebalance = is_rb_black(succesor) ? parent : nullptr;
+    }
+
+    succesor->rb_parent_color = pc;
+  }
+  return rebalance;
 }
