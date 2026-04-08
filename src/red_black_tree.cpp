@@ -189,7 +189,7 @@ inline void rb_insert_color(RBNode *rb_node, RBRoot *root) {
   };
 }
 
-inline RBNode *rb_erase(RBNode *node, RBRoot *root) {
+inline RBNode *rb_erase_augmented(RBNode *node, RBRoot *root) {
   RBNode *child = node->right;
   RBNode *tmp = node->left;
   RBNode *parent;
@@ -260,4 +260,36 @@ inline RBNode *rb_erase(RBNode *node, RBRoot *root) {
     succesor->rb_parent_color = pc;
   }
   return rebalance;
+}
+
+inline void rb_erase_color(RBNode *parent, RBRoot *root) {
+  RBNode *node = nullptr;
+  RBNode *sibling;
+  RBNode *tmp1;
+  RBNode *tmp2;
+
+  while (true) {
+    sibling = parent->right;
+
+    if (node != sibling) {
+      // node is on the left subtree
+      if (is_rb_red(sibling)) {
+        // Case 1 sibling is red
+        tmp1 = sibling->left;
+        parent->right = tmp1;
+        sibling->left = parent;
+        rb_set_parent_color(tmp1, parent, static_cast<int>(RBColor::Black));
+        rb_rotate_set_parents(parent, sibling, root,
+                              static_cast<int>(RBColor::Red));
+      }
+      // Now we test sibling children in order to see case 2,3 or 4
+      tmp1 = sibling->right;
+      if (!tmp1 || is_rb_black(tmp1)) {
+        tmp2 = sibling->left;
+        if (!tmp2 || is_rb_black(tmp2)) {
+          // Case 2
+        }
+      }
+    }
+  }
 }
