@@ -288,8 +288,56 @@ inline void rb_erase_color(RBNode *parent, RBRoot *root) {
         tmp2 = sibling->left;
         if (!tmp2 || is_rb_black(tmp2)) {
           // Case 2
+          rb_set_parent_color(sibling, parent, static_cast<int>(RBColor::Red));
+
+          if (is_rb_red(parent)) {
+            rb_set_black(parent);
+          } else {
+            node = parent;
+            parent = get_rb_parent(node);
+            if (parent)
+              continue;
+          }
+          break;
         }
+        // Case 3 is just preparing case 4 at this point data structure is
+        // broken
+        tmp1 = tmp2->right;
+        sibling->left = tmp1;
+        tmp2->right = sibling;
+        parent->right = tmp2;
+
+        if (tmp1) {
+          rb_set_parent_color(tmp1, sibling, static_cast<int>(RBColor::Black));
+        }
+
+        tmp1 = sibling;
+        sibling = tmp2;
       }
+      // Case 4
+      tmp2 = sibling->left;
+      parent->right = tmp2;
+      sibling->left = parent;
+
+      rb_set_parent_color(tmp1, sibling, static_cast<int>(RBColor::Black));
+
+      if (tmp1) {
+        rb_set_parent(tmp2, parent);
+      }
+
+      rb_rotate_set_parents(parent, sibling, root,
+                            static_cast<int>(RBColor::Black));
+    }
+    // Mirror cases right subtree
+    sibling = parent->left;
+    if (is_rb_red(sibling)) {
+      tmp1 = sibling->right;
+      parent->left = tmp1;
+      sibling->right = parent;
+      rb_set_parent_color(tmp1, parent, static_cast<int>(RBColor::Black));
+      rb_rotate_set_parents(parent, sibling, root,
+                            static_cast<int>(RBColor::Red));
+      sibling = tmp1;
     }
   }
 }
