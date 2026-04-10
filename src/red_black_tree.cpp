@@ -281,6 +281,7 @@ inline void rb_erase_color(RBNode *parent, RBRoot *root) {
         rb_set_parent_color(tmp1, parent, static_cast<int>(RBColor::Black));
         rb_rotate_set_parents(parent, sibling, root,
                               static_cast<int>(RBColor::Red));
+        sibling = tmp1;
       }
       // Now we test sibling children in order to see case 2,3 or 4
       tmp1 = sibling->right;
@@ -327,17 +328,49 @@ inline void rb_erase_color(RBNode *parent, RBRoot *root) {
 
       rb_rotate_set_parents(parent, sibling, root,
                             static_cast<int>(RBColor::Black));
-    }
-    // Mirror cases right subtree
-    sibling = parent->left;
-    if (is_rb_red(sibling)) {
-      tmp1 = sibling->right;
-      parent->left = tmp1;
-      sibling->right = parent;
-      rb_set_parent_color(tmp1, parent, static_cast<int>(RBColor::Black));
-      rb_rotate_set_parents(parent, sibling, root,
-                            static_cast<int>(RBColor::Red));
-      sibling = tmp1;
+    } else {
+
+      // Mirror cases right subtree
+      sibling = parent->left;
+      if (is_rb_red(sibling)) {
+        // Mirror case 1
+        tmp1 = sibling->right;
+        parent->left = tmp1;
+        sibling->right = parent;
+        rb_set_parent_color(tmp1, parent, static_cast<int>(RBColor::Black));
+        rb_rotate_set_parents(parent, sibling, root,
+                              static_cast<int>(RBColor::Red));
+        sibling = tmp1;
+      }
+
+      tmp1 = sibling->left;
+      if (!tmp1 || is_rb_black(tmp1)) {
+        tmp2 = sibling->right;
+        if (!tmp2 || is_rb_black(tmp2)) {
+          // Mirror case 2
+          rb_set_parent_color(tmp1, parent, static_cast<int>(RBColor::Red));
+          if (is_rb_red(parent)) {
+            rb_set_black(parent);
+          } else {
+            node = parent;
+            parent = get_rb_parent(node);
+            if (parent)
+              continue;
+          }
+          break;
+        }
+        // Mirror case 3
+        tmp1 = tmp2->left;
+        sibling->right = tmp1;
+        tmp2->left = sibling;
+        parent->left = tmp2;
+        if (tmp1)
+          rb_set_parent_color(tmp1, sibling, static_cast<int>(RBColor::Black));
+
+        tmp1 = sibling;
+        sibling = tmp2;
+      }
+      // Mirror case 4
     }
   }
 }
