@@ -371,6 +371,141 @@ inline void rb_erase_color(RBNode *parent, RBRoot *root) {
         sibling = tmp2;
       }
       // Mirror case 4
+      tmp2 = sibling->right;
+      parent->left = tmp2;
+      sibling->right = parent;
+      rb_set_parent_color(tmp1, sibling, static_cast<int>(RBColor::Black));
+      if (tmp2)
+        rb_set_parent(tmp2, parent);
+      rb_rotate_set_parents(parent, sibling, root,
+                            static_cast<int>(RBColor::Black));
     }
   }
 }
+
+inline void rb_erase(RBNode *rb_node, RBRoot *root) {
+  RBNode *rebalance = rb_erase_augmented(rb_node, root);
+  if (rebalance)
+    rb_erase_color(rebalance, root);
+};
+
+// Utitlity functions for empty node and empty root
+// An empty node points towards itself
+inline bool rb_empty_node(RBNode *rb_node) {
+  return rb_node->rb_parent_color == reinterpret_cast<unsigned long>(rb_node);
+};
+
+inline void rb_clear_node(RBNode *rb_node) {
+  rb_node->rb_parent_color = reinterpret_cast<unsigned long>(rb_node);
+};
+
+inline bool rb_empty_root(RBRoot *root) { return root->rb_root == nullptr; };
+
+// Find minimum
+inline RBNode *rb_first(RBRoot *root) {
+  RBNode *n = root->rb_root;
+  if (!n)
+    return nullptr;
+  while (n->left)
+    n = n->left;
+  return n;
+};
+
+// Find minimum
+inline RBNode *rb_last(RBRoot *root) {
+  RBNode *n = root->rb_root;
+  if (!n)
+    return nullptr;
+  while (n->right)
+    n = n->right;
+  return n;
+};
+
+inline RBNode *rb_next(RBNode *rb_node) {
+  RBNode *parent;
+
+  if (rb_empty_node(rb_node))
+    return nullptr;
+
+  // SUccessor is the leftmost in the right subtree
+  if (rb_node->right) {
+    RBNode *n = rb_node->right;
+    while (n->left) {
+      n = n->left;
+    }
+    return n;
+  }
+
+  while ((parent = get_rb_parent(rb_node)) && rb_node->right == parent) {
+    rb_node = parent;
+  }
+
+  return parent;
+};
+
+inline RBNode *rb_prev(RBNode *rb_node) {
+  RBNode *parent;
+
+  if (rb_empty_node(rb_node))
+    return nullptr;
+
+  if (rb_node->left) {
+    RBNode *n = rb_node->left;
+    while (n->right) {
+      n = n->right;
+    }
+
+    return n;
+  }
+
+  while ((parent = get_rb_parent(rb_node)) && rb_node->left == parent) {
+    rb_node = parent;
+  }
+
+  return parent;
+};
+
+inline void rb_replace(RBNode *victim, RBNode *replacement, RBRoot *root) {
+  RBNode *parent = get_rb_parent(victim);
+
+  if (victim->left) {
+    rb_set_parent(victim->left, replacement);
+  }
+
+  if (victim->right) {
+    rb_set_parent(victim->right, replacement);
+  }
+
+  rb_change_child(victim, replacement, parent, root);
+};
+
+inline RBNode *rb_left_deepest_node(RBNode *rb_node) {
+  while (true) {
+    if (rb_node->left) {
+      rb_node = rb_node->left;
+    } else if (rb_node->right) {
+      rb_node = rb_node->right;
+    } else {
+      return const_cast<RBNode *>(rb_node);
+    }
+  }
+};
+
+inline RBNode *rb_first_postorder(RBRoot *root) {
+  if (!root->rb_root)
+    return nullptr;
+  return rb_left_deepest_node(root->rb_root);
+};
+
+inline RBNode *rb_next_postorder(const RBNode *rb_node) {
+  if (!rb_node)
+    return nullptr;
+
+  RBNode *parent = get_rb_parent(rb_node);
+
+  if (parent && rb_node == parent->left && parent->right) {
+    return rb_left_deepest_node(parent->right);
+  }
+
+  return parent;
+};
