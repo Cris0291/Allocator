@@ -1,8 +1,18 @@
 #include "red_black_tree.hpp"
 #include <cstddef>
+#include <mutex>
+#include <new>
 #include <shared_mutex>
 
-template <typename K, typename V> class concurrentRBTree {
+// Most likely i will change this beciuase i dont really know where this fits in
+// my arena class
+struct DefaultAllocator {
+  void *allocate(std::size_t size) { return ::operator new(size); };
+  void deallocate(void *ptr) { ::operator delete(ptr); }
+};
+
+template <typename K, typename V, typename Allocator = DefaultAllocator>
+class concurrentRBTree {
 public:
   struct Entry {
     K key;
@@ -13,6 +23,7 @@ public:
 private:
   RBRoot root{nullptr};
   std::shared_mutex _mutex;
+  Allocator _allocator;
 
   static Entry *entry_of(RBNode *rb_node) {
     return reinterpret_cast<Entry *>(reinterpret_cast<char *>(rb_node) -
@@ -24,20 +35,36 @@ private:
         reinterpret_cast<const char *>(rb_node) - offsetof(Entry, rb_node));
   };
 
+  Entry *create_entry(const K &key, const V &value) {
+    void *mem{_allocator.allocate(sizeof(Entry))};
+    return new (mem) Entry{key, value, {}};
+  };
+
+  void destroy_entry(Entry *entry) {
+    entry->~Entry();
+    _allocator.deallocate(entry);
+  };
+
 public:
-  concurrentRBTree() = default;
+  concurrentRBTree() : _allocator(){};
+  explicit concurrentRBTree(Allocator alloc) : _allocator(std::move(alloc)){};
+
   ~concurrentRBTree() {
     RBNode *rb_node = rb_first_postorder(&root);
     while (rb_node) {
       RBNode *rb_next_node = rb_next_postorder(rb_node);
-      delete entry_of(rb_node);
+      destroy_entry(entry_of(rb_node));
       rb_node = rb_next_node;
     }
   };
   concurrentRBTree(const concurrentRBTree &) = delete;
   concurrentRBTree &operator=(const concurrentRBTree &) = delete;
 
+  Allocator &get_allocator() { return &_allocator; }
+
   bool insert(const K &key, const V &value) {
+    std::unique_lock<std::shared_mutex> lock(_mutex);
+
     RBNode **link = &root.rb_root;
     RBNode *parent;
     Entry *existing;
@@ -57,6 +84,11 @@ public:
     }
 
     // Need to change this line since i cannot use new in my allocator
-    Entry en = Entry{};
-  };
+    Entry *entry = create_entry(key, value);
+    rb_link_node(&entry->rb, parent, link);
+    rb_insert_color(&entry->rb, &root.rb_root);
+    return true;
+  }
+
+  bool erase(const K &key) { std::unique_lock<std::shared_mutex> lock(_mutex); }
 };
