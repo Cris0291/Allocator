@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <mutex>
 #include <new>
+#include <optional>
 #include <shared_mutex>
 
 // Most likely i will change this beciuase i dont really know where this fits in
@@ -22,7 +23,7 @@ public:
 
 private:
   RBRoot root{nullptr};
-  std::shared_mutex _mutex;
+  mutable std::shared_mutex _mutex;
   Allocator _allocator;
 
   static Entry *entry_of(RBNode *rb_node) {
@@ -90,5 +91,59 @@ public:
     return true;
   }
 
-  bool erase(const K &key) { std::unique_lock<std::shared_mutex> lock(_mutex); }
+  bool erase(const K &key) {
+    std::unique_lock<std::shared_mutex> lock(_mutex);
+
+    RBNode *node{root.rb_root};
+    while (node) {
+      Entry *entry = entry_of(node);
+      if (key > entry->key) {
+        node = node->right;
+      } else if (key < entry->key) {
+        node = node->left;
+      } else {
+        rb_erase(node, &root);
+        destroy_entry(node);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  std::optional<V> find(const K &key) {
+    std::shared_lock<std::shared_mutex> lock(_mutex);
+
+    RBNode *node{root.rb_root};
+
+    while (node) {
+      Entry *entry{entry_of(node)};
+      if (key > entry->right) {
+        node = node->right;
+      } else if (key < entry->key) {
+        node = node->left;
+      } else {
+        return entry->value;
+      }
+    }
+
+    return std::nullopt;
+  }
+
+  bool contains(const K &key) { return find(key).has_value(); }
+
+  std::optional<V> min(const K &key) const {
+    std::shared_lock<std::shared_mutex> lock(_mutex);
+    RBNode *node = rb_first(&root);
+    if (!node)
+      return std::nullopt;
+    return entry_of(node)->value;
+  }
+
+  std::optional<V> max(const K &key) const {
+    std::shared_lock<std::shared_mutex> lock(_mutex);
+    RBNode *node = rb_last(&root);
+    if (!node)
+      return std::nullopt;
+    return entry_of(node)->value;
+  }
 };

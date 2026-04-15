@@ -402,7 +402,7 @@ inline void rb_clear_node(RBNode *rb_node) {
 inline bool rb_empty_root(RBRoot *root) { return root->rb_root == nullptr; };
 
 // Find minimum
-inline RBNode *rb_first(RBRoot *root) {
+inline RBNode *rb_first(const RBRoot *root) {
   RBNode *n = root->rb_root;
   if (!n)
     return nullptr;
@@ -412,7 +412,7 @@ inline RBNode *rb_first(RBRoot *root) {
 };
 
 // Find minimum
-inline RBNode *rb_last(RBRoot *root) {
+inline RBNode *rb_last(const RBRoot *root) {
   RBNode *n = root->rb_root;
   if (!n)
     return nullptr;
