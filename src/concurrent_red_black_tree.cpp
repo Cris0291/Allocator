@@ -1,5 +1,6 @@
 #include "red_black_tree.hpp"
 #include <cstddef>
+#include <functional>
 #include <mutex>
 #include <new>
 #include <optional>
@@ -145,5 +146,36 @@ public:
     if (!node)
       return std::nullopt;
     return entry_of(node)->value;
+  }
+
+  void for_each(const std::function<void(const K &key, const V &value)> &fn) {
+    std::shared_lock<std::shared_mutex> lock(_mutex);
+    for (RBNode *node = rb_first(&root); node; node = rb_next(node)) {
+      Entry *entry = entry_of(node);
+      fn(entry->key, entry->value);
+    }
+  }
+
+  void for_each_reverse(
+      const std::function<void(const K &key, const V &value)> &fn) {
+    std::shared_lock<std::shared_mutex> lock(_mutex);
+    for (RBNode *node = rb_last(&root); node; node = rb_prev(node)) {
+      Entry *entry = entry_of(node);
+      fn(entry->key, entry->value);
+    }
+  }
+
+  std::size_t size() const {
+    std::shared_lock<std::shared_mutex> lock(_mutex);
+    std::size_t count{};
+    for (RBNode *node; node; node = rb_next(node)) {
+      count++;
+    }
+    return count;
+  }
+
+  bool empty() const {
+    std::shared_lock<std::shared_mutex> lock(_mutex);
+    return root.rb_root == nullptr;
   }
 };
