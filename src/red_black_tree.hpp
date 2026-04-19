@@ -436,7 +436,7 @@ inline RBNode *rb_next(RBNode *rb_node) {
     return n;
   }
 
-  while ((parent = get_rb_parent(rb_node)) && rb_node->right == parent) {
+  while ((parent = get_rb_parent(rb_node)) && rb_node == parent->right) {
     rb_node = parent;
   }
 
@@ -458,7 +458,7 @@ inline RBNode *rb_prev(RBNode *rb_node) {
     return n;
   }
 
-  while ((parent = get_rb_parent(rb_node)) && rb_node->left == parent) {
+  while ((parent = get_rb_parent(rb_node)) && rb_node == parent->left) {
     rb_node = parent;
   }
 
