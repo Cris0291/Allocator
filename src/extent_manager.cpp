@@ -32,6 +32,18 @@ private:
     return new (reinterpret_cast<void *>(base)) Entry{};
   }
 
+  Entry *find_prev_free(std::uintptr_t base) {
+    RBNode *node{rb_first(&root)};
+    Entry *entry{nullptr};
+    while (node) {
+      entry = entry_of(node);
+      if ((entry->base + entry->size) == base)
+        return entry;
+      node = rb_next(node);
+    }
+    return nullptr;
+  }
+
   Entry *alloc_pool_node() {
     Entry *entry;
     // First check if there are nodes in the free list
@@ -55,12 +67,16 @@ private:
   }
 
 public:
-  ExtentManager(std::uintptr_t base, std::size_t size)
-      : base_pointer(base), capacity(size), bump_pointer(base) {
+  ExtentManager(std::uintptr_t pool_base, std::size_t pool_size,
+                std::uintptr_t usable_base, std::size_t usable_size)
+      : base_pointer(pool_base), capacity(pool_base + pool_size),
+        bump_pointer(pool_base) {
     Entry *entry{alloc_pool_node()};
-    entry->base = base_pointer;
-    entry->size = size;
-    bump_pointer += sizeof(Entry);
+    entry->base = usable_base;
+    entry->size = usable_size;
+    entry->rb = {};
+    rb_link_node(&entry->rb, nullptr, &root.rb_root);
+    rb_insert_color(&entry->rb, &root);
   }
 
   void *alloc_extent(std::size_t size_node) {
@@ -91,6 +107,20 @@ public:
       // no size left return nullptr let arena handle
       return nullptr;
     }
+  }
+
+  bool free_extent(std::uintptr_t base, std::size_t size) {
+    // 0 variables init
+    Entry *prev{nullptr};
+    Entry *next{nullptr};
+    Entry *entry{nullptr};
+    // 1 Go first then next in ordert to find prev region
+    prev = find_prev_free(base);
+    // 2 if prev region find sucessor from that node if not go last and prev
+
+    // 3 if found eiither just change one node if just one region if both change
+    // one delete the there 4 if neither region were found allocate a single
+    // node
   }
 
 private:
