@@ -44,6 +44,18 @@ private:
     return nullptr;
   }
 
+  Entry *find_next_free(std::uintptr_t base, std::size_t size) {
+    RBNode *node{rb_last(&root)};
+    Entry *entry{nullptr};
+    while (node) {
+      entry = entry_of(node);
+      if ((base + size) == entry->base)
+        return entry;
+      node = rb_prev(node);
+    }
+    return nullptr;
+  }
+
   Entry *alloc_pool_node() {
     Entry *entry;
     // First check if there are nodes in the free list
@@ -109,18 +121,20 @@ public:
     }
   }
 
-  bool free_extent(std::uintptr_t base, std::size_t size) {
+  void free_extent(std::uintptr_t base, std::size_t size) {
     // 0 variables init
     Entry *prev{nullptr};
     Entry *next{nullptr};
     Entry *entry{nullptr};
-    // 1 Go first then next in ordert to find prev region
-    prev = find_prev_free(base);
-    // 2 if prev region find sucessor from that node if not go last and prev
 
-    // 3 if found eiither just change one node if just one region if both change
-    // one delete the there 4 if neither region were found allocate a single
-    // node
+    entry = insert_new_node(base, size);
+    RBNode *next_node{&entry->rb};
+    next_node = rb_next(next_node);
+    RBNode *prev_node{&entry->rb};
+    prev_node = rb_prev(prev_node);
+
+    prev = entry_of(prev_node);
+    next = entry_of(next_node);
   }
 
 private:

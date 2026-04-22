@@ -422,7 +422,7 @@ inline RBNode *rb_last(const RBRoot *root) {
 };
 
 inline RBNode *rb_next(RBNode *rb_node) {
-  RBNode *parent;
+  RBNode *parent{nullptr};
 
   if (rb_empty_node(rb_node))
     return nullptr;
@@ -444,7 +444,7 @@ inline RBNode *rb_next(RBNode *rb_node) {
 };
 
 inline RBNode *rb_prev(RBNode *rb_node) {
-  RBNode *parent;
+  RBNode *parent{nullptr};
 
   if (rb_empty_node(rb_node))
     return nullptr;
