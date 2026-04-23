@@ -32,30 +32,6 @@ private:
     return new (reinterpret_cast<void *>(base)) Entry{};
   }
 
-  Entry *find_prev_free(std::uintptr_t base) {
-    RBNode *node{rb_first(&root)};
-    Entry *entry{nullptr};
-    while (node) {
-      entry = entry_of(node);
-      if ((entry->base + entry->size) == base)
-        return entry;
-      node = rb_next(node);
-    }
-    return nullptr;
-  }
-
-  Entry *find_next_free(std::uintptr_t base, std::size_t size) {
-    RBNode *node{rb_last(&root)};
-    Entry *entry{nullptr};
-    while (node) {
-      entry = entry_of(node);
-      if ((base + size) == entry->base)
-        return entry;
-      node = rb_prev(node);
-    }
-    return nullptr;
-  }
-
   Entry *alloc_pool_node() {
     Entry *entry;
     // First check if there are nodes in the free list
@@ -133,8 +109,27 @@ public:
     RBNode *prev_node{&entry->rb};
     prev_node = rb_prev(prev_node);
 
-    prev = entry_of(prev_node);
     next = entry_of(next_node);
+    prev = entry_of(prev_node);
+
+    bool merge_prev{prev && (prev->base + prev->size == entry->base)};
+    bool mege_next{next && (entry->base + entry->size == next->base)};
+
+    if (merge_prev && mege_next) {
+      prev->size += entry->size + next->size;
+      rb_erase(&entry->rb, &root);
+      rb_erase(&next->rb, &root);
+      free_pool_node(entry);
+      free_pool_node(next);
+    } else if (merge_prev) {
+      prev->size += entry->size;
+      rb_erase(&entry->rb, &root);
+      free_pool_node(entry);
+    } else if (mege_next) {
+      entry->size += next->size;
+      rb_erase(&next->rb, &root);
+      free_pool_node(next);
+    }
   }
 
 private:
