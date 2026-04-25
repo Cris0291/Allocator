@@ -1,177 +1,144 @@
-#include "red_black_tree.hpp"
-#include <cstddef>
-#include <cstdint>
+#include "extent_manager.h"
 
-class ExtentManager {
-public:
-  struct Entry {
-    std::uintptr_t base;
-    std::size_t size;
-    RBNode rb;
-    Entry *next_free;
-  };
+ExtentManager::Entry *ExtentManager::alloc_pool_node() {
+  Entry *entry{nullptr};
+  // First check if there are nodes in the free list
+  if (head) {
+    entry = head;
+    head = head->next_free;
+    entry->next_free = nullptr;
+  } else if (bump_pointer < capacity) {
+    entry = create_entry(bump_pointer);
+    bump_pointer += sizeof(Entry);
+  }
+  // In this case it is possible to return nullptr indicating thate there was
+  // no space left
+  return entry;
+}
 
-private:
-  RBRoot root{nullptr};
-  Entry *head{nullptr};
-  std::uintptr_t base_pointer;
-  std::uintptr_t bump_pointer;
-  std::size_t capacity;
+void ExtentManager::free_pool_node(Entry *entry) {
+  entry->next_free = head;
+  head = entry;
+}
 
-  static Entry *entry_of(RBNode *rb_node) {
-    return reinterpret_cast<Entry *>(reinterpret_cast<char *>(rb_node) -
-                                     offsetof(Entry, rb));
+ExtentManager::ExtentManager(std::uintptr_t pool_base, std::size_t pool_size,
+                             std::uintptr_t usable_base,
+                             std::size_t usable_size)
+    : base_pointer(pool_base), capacity(pool_base + pool_size),
+      bump_pointer(pool_base) {
+  Entry *entry{alloc_pool_node()};
+  entry->base = usable_base;
+  entry->size = usable_size;
+  entry->rb = {};
+  rb_link_node(&entry->rb, nullptr, &root.rb_root);
+  rb_insert_color(&entry->rb, &root);
+}
+
+void *ExtentManager::alloc_extent(std::size_t size_node) {
+  RBNode *node{rb_first(&root)};
+  Entry *entry{nullptr};
+  while (node) {
+    entry = entry_of(node);
+    if (entry->size >= size_node)
+      break;
+    node = rb_next(node);
+  }
+  if (!node)
+    return nullptr;
+
+  if (entry->size == size_node) {
+    void *addr{reinterpret_cast<void *>(entry->base)};
+    erase(entry->base);
+    free_pool_node(entry);
+    return addr;
+  } else if (entry->size > size_node) {
+    std::uintptr_t allocated_addr{entry->base};
+    std::uintptr_t new_base{entry->base + size_node};
+    std::size_t remaining_size{entry->size - size_node};
+    entry->size = remaining_size;
+    entry->base = new_base;
+    return reinterpret_cast<void *>(allocated_addr);
   }
 
-  static const Entry *entry_of(const RBNode *rb_node) {
-    return reinterpret_cast<const Entry *>(
-        reinterpret_cast<const char *>(rb_node) - offsetof(Entry, rb));
-  }
+  return nullptr;
+}
 
-  static Entry *create_entry(std::uintptr_t base) {
-    return new (reinterpret_cast<void *>(base)) Entry{};
-  }
+void ExtentManager::free_extent(std::uintptr_t base, std::size_t size) {
+  // 0 variables init
+  Entry *prev{nullptr};
+  Entry *next{nullptr};
+  Entry *entry{nullptr};
 
-  Entry *alloc_pool_node() {
-    Entry *entry;
-    // First check if there are nodes in the free list
-    if (head) {
-      entry = head;
-      head = head->next_free;
-      entry->next_free = nullptr;
-      return entry;
-    } else if (bump_pointer < capacity) {
-      entry = create_entry(bump_pointer);
-      bump_pointer += sizeof(Entry);
-    }
-    // In this case it is possible to return nullptr indicating thate there was
-    // no space left
-    return entry;
-  }
+  entry = insert_new_node(base, size);
+  RBNode *next_node{&entry->rb};
+  next_node = rb_next(next_node);
+  RBNode *prev_node{&entry->rb};
+  prev_node = rb_prev(prev_node);
 
-  void free_pool_node(Entry *entry) {
-    entry->next_free = head;
-    head = entry;
-  }
-
-public:
-  ExtentManager(std::uintptr_t pool_base, std::size_t pool_size,
-                std::uintptr_t usable_base, std::size_t usable_size)
-      : base_pointer(pool_base), capacity(pool_base + pool_size),
-        bump_pointer(pool_base) {
-    Entry *entry{alloc_pool_node()};
-    entry->base = usable_base;
-    entry->size = usable_size;
-    entry->rb = {};
-    rb_link_node(&entry->rb, nullptr, &root.rb_root);
-    rb_insert_color(&entry->rb, &root);
-  }
-
-  void *alloc_extent(std::size_t size_node) {
-    RBNode *node{rb_first(&root)};
-    Entry *entry{nullptr};
-    while (node) {
-      entry = entry_of(node);
-      if (entry->size >= size_node)
-        break;
-      node = rb_next(node);
-    }
-    if (!node)
-      return nullptr;
-
-    if (entry->size == size_node) {
-      void *addr{reinterpret_cast<void *>(entry->base)};
-      erase(entry->base);
-      free_pool_node(entry);
-      return addr;
-    } else if (entry->size > size_node) {
-      std::uintptr_t allocated_addr{entry->base};
-      std::uintptr_t new_base{entry->base + size_node};
-      std::size_t remaining_size{entry->size - size_node};
-      entry->size = remaining_size;
-      entry->base = new_base;
-      return reinterpret_cast<void *>(allocated_addr);
-    } else {
-      // no size left return nullptr let arena handle
-      return nullptr;
-    }
-  }
-
-  void free_extent(std::uintptr_t base, std::size_t size) {
-    // 0 variables init
-    Entry *prev{nullptr};
-    Entry *next{nullptr};
-    Entry *entry{nullptr};
-
-    entry = insert_new_node(base, size);
-    RBNode *next_node{&entry->rb};
-    next_node = rb_next(next_node);
-    RBNode *prev_node{&entry->rb};
-    prev_node = rb_prev(prev_node);
-
+  if (next_node)
     next = entry_of(next_node);
+  if (prev_node)
     prev = entry_of(prev_node);
 
-    bool merge_prev{prev && (prev->base + prev->size == entry->base)};
-    bool mege_next{next && (entry->base + entry->size == next->base)};
+  bool merge_prev{prev && (prev->base + prev->size == entry->base)};
+  bool merge_next{next && (entry->base + entry->size == next->base)};
 
-    if (merge_prev && mege_next) {
-      prev->size += entry->size + next->size;
-      rb_erase(&entry->rb, &root);
-      rb_erase(&next->rb, &root);
-      free_pool_node(entry);
-      free_pool_node(next);
-    } else if (merge_prev) {
-      prev->size += entry->size;
-      rb_erase(&entry->rb, &root);
-      free_pool_node(entry);
-    } else if (mege_next) {
-      entry->size += next->size;
-      rb_erase(&next->rb, &root);
-      free_pool_node(next);
+  if (merge_prev && merge_next) {
+    prev->size += entry->size + next->size;
+    rb_erase(&entry->rb, &root);
+    rb_erase(&next->rb, &root);
+    free_pool_node(entry);
+    free_pool_node(next);
+  } else if (merge_prev) {
+    prev->size += entry->size;
+    rb_erase(&entry->rb, &root);
+    free_pool_node(entry);
+  } else if (merge_next) {
+    entry->size += next->size;
+    rb_erase(&next->rb, &root);
+    free_pool_node(next);
+  }
+}
+
+ExtentManager::Entry *ExtentManager::insert_new_node(std::uintptr_t new_base,
+                                                     std::size_t size) {
+  RBNode **link{&root.rb_root};
+  RBNode *parent{nullptr};
+  Entry *existing;
+
+  while (*link) {
+    parent = *link;
+    existing = entry_of(parent);
+    if (new_base > existing->base) {
+      link = &parent->right;
+    } else {
+      link = &parent->left;
     }
   }
 
-private:
-  Entry *insert_new_node(std::uintptr_t new_base, std::size_t size) {
-    RBNode **link{&root.rb_root};
-    RBNode *parent{nullptr};
-    Entry *existing;
+  Entry *entry{alloc_pool_node()};
+  entry->size = size;
+  entry->base = new_base;
+  rb_link_node(&entry->rb, parent, link);
+  rb_insert_color(&entry->rb, &root);
+  return entry;
+}
 
-    while (*link) {
-      parent = *link;
-      existing = entry_of(parent);
-      if (new_base > existing->base) {
-        link = &parent->right;
-      } else {
-        link = &parent->left;
-      }
-    }
+void ExtentManager::erase(std::uintptr_t key) {
+  RBNode *node = root.rb_root;
+  Entry *entry;
 
-    Entry *entry{alloc_pool_node()};
-    entry->size = size;
-    entry->base = new_base;
-    rb_link_node(&entry->rb, parent, link);
-    rb_insert_color(&entry->rb, &root);
-    return entry;
-  }
-
-  void erase(std::uintptr_t key) {
-    RBNode *node = root.rb_root;
-    Entry *entry;
-
-    while (node) {
-      entry = entry_of(node);
-      if (entry->base > key) {
-        node = node->left;
-      } else if (entry->base < key) {
-        node = node->right;
-      } else {
-        // I am not sure if memory could be leak from here i dont relaly think
-        // so since the rb is stil in entry which in the case is in linked list
-        rb_erase(node, &root);
-        break;
-      }
+  while (node) {
+    entry = entry_of(node);
+    if (entry->base > key) {
+      node = node->left;
+    } else if (entry->base < key) {
+      node = node->right;
+    } else {
+      // I am not sure if memory could be leak from here i dont relaly think
+      // so since the rb is stil in entry which in the case is in linked list
+      rb_erase(node, &root);
+      break;
     }
   }
-};
+}
