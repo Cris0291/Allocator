@@ -1,4 +1,5 @@
 #include "atomic_word_ops.h"
+#include "extent_manager.h"
 #include <array>
 #include <atomic>
 #include <cmath>
@@ -51,7 +52,8 @@ class SuperBlock {
   }
 
 public:
-  SuperBlock(uint32_t class_id) {
+  SuperBlock(uint32_t class_id, ExtentManager &extent_manager,
+             std::size_t slot_size) {
     bitmasks = make_bitmasks();
     std::size_t super_block_header_sz{sizeof(SuperBlockHeader)};
     std::size_t header_aligned_sz{align_up(super_block_header_sz, 16)};
@@ -61,8 +63,8 @@ public:
     std::size_t bitmap_sz{(slots / 64) * 8};
     std::uintptr_t payload_align_sz{
         align_up(header_aligned_sz + bitmap_sz, 16)};
-    // allocate usiing  os api for a span_size memory - span_size
-    void *raw;
+
+    void *raw{extent_manager.alloc_extent(span_size)};
 
     std::uintptr_t base{reinterpret_cast<uintptr_t>(raw)};
     SuperBlockHeader *header{reinterpret_cast<SuperBlockHeader *>(base)};
@@ -72,10 +74,10 @@ public:
     header->slot_size = SLOT_SIZE;
     header->n_slot = slots;
     header->free_count = slots;
-    header->payload_ptr = payload_align_sz;
+    header->payload_ptr = base + payload_align_sz;
 
     std::uintptr_t bitmap_ptr{base + header_aligned_sz};
-    bitmap = &bitmap_ptr;
+    bitmap = reinterpret_cast<std::uint64_t *>(bitmap_ptr);
     // initialiize bitmap to 0's
     void *bitmap_vptr{reinterpret_cast<void *>(bitmap_ptr)};
     std::memset(bitmap_vptr, 0, bitmap_sz);
@@ -121,14 +123,14 @@ public:
 
   void free_atomic_span(void *payload) {
     std::uintptr_t p{reinterpret_cast<std::uintptr_t>(payload)};
-    std::uintptr_t offset{super_block_header->payload_ptr - p};
+    std::uintptr_t offset{p - super_block_header->payload_ptr};
     // TODO 0 <= offset < N * SLOT_SIZE also offset % SLOT_SIZE
     std::uintptr_t slot_index{offset / SLOT_SIZE};
     std::uintptr_t word_index{slot_index / 64};
     std::uintptr_t bit{slot_index % 64};
     std::uint64_t single_mask = 1ULL << bit;
-    std::uint64_t word{atomic_word_load(&bitmap[word_index])};
-    std::uint64_t prev{atomic_word_fetch_and(&word, ~single_mask)};
+    std::uint64_t prev{
+        atomic_word_fetch_and(&bitmap[word_index], ~single_mask)};
     // if((prev & single_mask) == 0) double free corruption hanlde it
     // TODO handle over addtion surpasing the available amount of slots
     super_block_header->free_count.fetch_add(1);
