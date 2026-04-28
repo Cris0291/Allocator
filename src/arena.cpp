@@ -12,6 +12,9 @@ class arena {
     std::uint16_t arena_id;
     std::uint16_t owner_core;
     std::uint64_t total_size;
+    std::uintptr_t arena_stats_offset;
+    std::uintptr_t super_block_array_offset;
+    std::uintptr_t node_pool_offset;
     void *arena_base;
   };
 
@@ -20,6 +23,16 @@ class arena {
     std::atomic_uint_fast64_t free_count;
     std::atomic_uint_fast64_t bytes_allocated;
     std::atomic_uint_fast64_t bytes_free;
+    std::atomic_uint_fast64_t bytes_in_use;
+    std::atomic_uint_fast64_t bytes_wasted;
+    std::uint8_t padding[(64 - ((6 * sizeof(uint64_t)) % 64)) % 64];
+  };
+
+  struct SuperBlockHealth {
+    std::atomic_uint_fast64_t superblocks_active;
+    std::atomic_uint_fast64_t superblocks_full;
+    std::atomic_uint_fast64_t superblocks_created;
+    std::atomic_uint_fast64_t superblocks_released;
     std::uint8_t padding[(64 - ((4 * sizeof(uint64_t)) % 64)) % 64];
   };
 
