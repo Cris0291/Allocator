@@ -1,9 +1,12 @@
 #include "os_api.h"
+#include "super_block.h"
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <uchar.h>
 
 class arena {
+  static constexpr char8_t NUM_CLASSES{17};
   std::size_t default_arena_size{256};
   struct ArenaHeader {
     std::uint32_t version;
@@ -36,7 +39,10 @@ class arena {
     std::uint8_t padding[(64 - ((4 * sizeof(uint64_t)) % 64)) % 64];
   };
 
-  // SuperBlock nterface should go here
+  struct SuperBlockPool {
+    SuperBlock *super_block_pool[NUM_CLASSES];
+  };
+
 public:
   arena(std::uint32_t id, std::uint32_t core, std::uint32_t flags_config) {
     std::size_t arena_bytes{default_arena_size * 1024};
