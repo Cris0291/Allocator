@@ -20,7 +20,11 @@ private:
     std::uint64_t total_usable_size;
     std::uintptr_t arena_stats_offset;
     std::uintptr_t super_block_health_offset;
-    std::uintptr_t node_pool_offset;
+    std::uintptr_t super_block_pool_offset;
+    std::uintptr_t super_block_classes_offset;
+    std::uintptr_t extent_manager_offset;
+    std::uintptr_t extent_manager_pool_offset;
+    std::uintptr_t usable_region_offset;
     void *arena_base;
   };
 
@@ -43,7 +47,18 @@ private:
   };
 
   struct SuperBlockPool {
-    SuperBlock *super_block_pool[NUM_CLASSES];
+    alignas(SuperBlock) unsigned char storage[4][sizeof(SuperBlock)];
+    bool occupied[4]{};
+  };
+
+  struct SuperBlockPoolClasses {
+    SuperBlock *super_block_pool_classes[NUM_CLASSES];
+  };
+
+  ExtentManager *extent_manager;
+
+  struct ExtentManagerPool {
+    ExtentManager::Entry entry_pool[64];
   };
 
   ArenaHeader *base;
@@ -52,8 +67,9 @@ private:
     return (x + (size - 1)) & ~(size - 1);
   };
 
-  static void *init_header(void *base, std::uint32_t id, std::uint32_t core,
-                           std::uint32_t flags_config) {
+  static ArenaHeader *init_header(void *base, std::uint32_t id,
+                                  std::uint32_t core,
+                                  std::uint32_t flags_config) {
     ArenaHeader *arena_base{reinterpret_cast<ArenaHeader *>(base)};
     arena_base->arena_id = id;
     arena_base->owner_core = core;
@@ -69,29 +85,38 @@ private:
 
     // Offset   Size   Description
     //-----    ----   -----------
-    // 0         56    ArenaHeader
-    // 56        8     padding to 64
-    // 64        64    ArenaStats
-    // 128       64    SuperBlockHealth
-    // 192       136   SuperBlockPool
-    // 328       56    if i want another cache inline
-    // 384        8     ArenaHeader*
+    // 0         88    ArenaHeader(64 bit)
+    // 88        40    Padding for the next cache line
+    // 128       64    ArenaStats
+    // 192       64    SuperBlockHealth
+    // 256       192   SuperBlockPool
+    // 448       136   SuperBlockClasses
+    // 592       8    ExtentManager
+    // 592      3072   Extent manager pool
+    // 3664     432    Padding to usable memory
+    // 4096
     arena_base->arena_stats_offset = hreader_alignup_offset;
     arena_base->super_block_health_offset =
         arena_base->arena_stats_offset + sizeof(ArenaStats);
-    arena_base->node_pool_offset =
+    arena_base->super_block_pool_offset =
         arena_base->super_block_health_offset + sizeof(SuperBlockHealth);
+    arena_base->super_block_classes_offset =
+        arena_base->super_block_pool_offset + sizeof(SuperBlockPool);
+    arena_base->extent_manager_offset =
+        arena_base->super_block_classes_offset + sizeof(SuperBlockPoolClasses);
+    arena_base->extent_manager_pool_offset =
+        arena_base->extent_manager_offset + sizeof(ExtentManager);
+
+    arena_base->usable_region_offset =
+        align_up(arena_base->extent_manager_pool_offset, 4096);
 
     base = arena_base;
 
-    std::uintptr_t states_base_ptr{
-        reinterpret_cast<std::uintptr_t>(arena_base->arena_base) +
-        arena_base->arena_stats_offset};
-    return reinterpret_cast<void *>(states_base_ptr);
+    return arena_base;
   };
 
-  static void init_arena_stats(void *stats) {
-    ArenaStats *arena_stats{reinterpret_cast<ArenaStats *>(stats)};
+  static void init_arena_stats(ArenaHeader *header) {
+    ArenaStats *arena_stats{reinterpret_cast<ArenaStats *>(header)};
     // This wiil ontl be handled by the owning thread of the core
     arena_stats->alloc_count.store(0, std::memory_order_release);
     arena_stats->free_count.store(0, std::memory_order_release);
@@ -101,9 +126,26 @@ private:
     arena_stats->bytes_wasted.store(0, std::memory_order_release);
   };
 
+  void init_extent_manager(ArenaHeader *header) {
+    void *extent_manager_addr = reinterpret_cast<void *>(
+        reinterpret_cast<std::uintptr_t>(header->arena_base) +
+        header->extent_manager_offset);
+
+    std::uintptr_t arena_base{
+        reinterpret_cast<std::uintptr_t>(header->arena_base)};
+
+    std::uintptr_t pool_base{arena_base + header->extent_manager_pool_offset};
+    std::size_t pool_size{sizeof(ExtentManagerPool)};
+    std::uintptr_t usable_base{arena_base + header->usable_region_offset};
+    std::size_t usable_size{header->total_usable_size};
+
+    extent_manager = new (extent_manager_addr)
+        ExtentManager(pool_base, pool_size, usable_base, usable_size);
+  };
+
   void *get_super_pool_address() {
     return reinterpret_cast<void *>(reinterpret_cast<std::uintptr_t>(base) +
-                                    base->node_pool_offset);
+                                    base->super_block_pool_offset);
   };
 
   void *get_super_block_health_address() {
@@ -129,8 +171,10 @@ public:
 
     os_api::reserve_address_space(arena_bytes, os_api::PAGE_SIZE, mem_info);
 
-    void *arena_base{mem_info.addr};
-    void *stats = init_header(arena_base, id, core, flags_config);
-    init_arena_stats(stats);
-  }
+    void *base{mem_info.addr};
+
+    ArenaHeader *arena_base = init_header(base, id, core, flags_config);
+    init_arena_stats(arena_base);
+    init_extent_manager(arena_base);
+  };
 };
