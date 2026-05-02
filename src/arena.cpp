@@ -11,6 +11,7 @@ private:
   static constexpr std::size_t NUM_CLASSES{17};
   // Size of arena is 256 but allocated an extra page for header and metadata
   static constexpr std::size_t default_arena_size{260};
+
   struct ArenaHeader {
     std::uint32_t version;
     std::uint32_t magic;
@@ -75,7 +76,6 @@ private:
     arena_base->owner_core = core;
     arena_base->arena_base = base;
     arena_base->flags = flags_config;
-    arena_base->total_usable_size = 256 * 1024;
     arena_base->version = 1;
     arena_base->magic = 0xA17ECAFE;
 
@@ -91,9 +91,9 @@ private:
     // 192       64    SuperBlockHealth
     // 256       192   SuperBlockPool
     // 448       136   SuperBlockClasses
-    // 592       8    ExtentManager
-    // 592      3072   Extent manager pool
-    // 3664     432    Padding to usable memory
+    // 592       40    ExtentManager
+    // 632      3072   Extent manager pool
+    // 3704     392    Padding to usable memory
     // 4096
     arena_base->arena_stats_offset = hreader_alignup_offset;
     arena_base->super_block_health_offset =
@@ -110,14 +110,17 @@ private:
     arena_base->usable_region_offset =
         align_up(arena_base->extent_manager_pool_offset, 4096);
 
-    base = arena_base;
+    arena_base->total_usable_size =
+        (default_arena_size - arena_base->usable_region_offset) * 1024;
 
     return arena_base;
   };
 
   static void init_arena_stats(ArenaHeader *header) {
-    ArenaStats *arena_stats{reinterpret_cast<ArenaStats *>(header)};
-    // This wiil ontl be handled by the owning thread of the core
+    ArenaStats *arena_stats{reinterpret_cast<ArenaStats *>(
+        reinterpret_cast<std::uintptr_t>(header->arena_base) +
+        header->arena_stats_offset)};
+    // This wiil only be handled by the owning thread of the core
     arena_stats->alloc_count.store(0, std::memory_order_release);
     arena_stats->free_count.store(0, std::memory_order_release);
     arena_stats->bytes_free.store(256 * 1024, std::memory_order_release);
@@ -174,7 +177,13 @@ public:
     void *base{mem_info.addr};
 
     ArenaHeader *arena_base = init_header(base, id, core, flags_config);
+    base = arena_base->arena_base;
     init_arena_stats(arena_base);
     init_extent_manager(arena_base);
+
+    os_api::commit_memory(base, 4096);
+  };
+  void *alloc(std::size_t size) {
+
   };
 };
