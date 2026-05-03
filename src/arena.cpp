@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <uchar.h>
 
 class arena {
@@ -146,6 +147,18 @@ private:
         ExtentManager(pool_base, pool_size, usable_base, usable_size);
   };
 
+  void *get_arena_stats() {
+    return reinterpret_cast<void *>(
+        reinterpret_cast<std::uintptr_t>(base->arena_base) +
+        base->arena_stats_offset);
+  }
+
+  void *get_super_block_pool() {
+    return reinterpret_cast<void *>(
+        reinterpret_cast<std::uintptr_t>(base->arena_base) +
+        base->super_block_pool_offset);
+  };
+
   void *get_super_pool_address() {
     return reinterpret_cast<void *>(reinterpret_cast<std::uintptr_t>(base) +
                                     base->super_block_pool_offset);
@@ -156,16 +169,61 @@ private:
                                     base->super_block_health_offset);
   };
 
-  bool alloc_super_block_node(std::size_t slot_size) {
-    void *node_pool_addr{get_super_pool_address()};
-    void *super_block_health_addr{get_super_block_health_address()};
+  void *get_super_block_classes() {
+    return reinterpret_cast<void *>(
+        reinterpret_cast<std::uintptr_t>(base->arena_base) +
+        base->super_block_classes_offset);
+  }
+
+  bool has_arena_space(ArenaStats *arena_stats) {
+    return base->total_usable_size >
+           arena_stats->bytes_allocated.load(std::memory_order_acquire);
+  };
+
+  bool has_super_block_space(ArenaStats *arena_stats) {
+    return base->total_usable_size -
+               arena_stats->bytes_allocated.load(std::memory_order_acquire) >=
+           SuperBlock::get_super_block_size();
+  }
+
+  SuperBlock *alloc_super_block(std::size_t slot_size, std::size_t id) {
     // Have doubst in here
     // flow should be load super_block_health_addr->superblocks_active
     // then check if at that moment they are less than 4 if so proceed since we
     // can only have 4 of then i wonder if super bclok pool should be atomic in
     // iorder to see if a super block for that size is alrady here then recheck
     // for 4 and for empty slot and if so allocate
+    void *super_block_pool_addr{get_super_block_pool()};
+
+    SuperBlockPool *super_block_pool{
+        reinterpret_cast<SuperBlockPool *>(super_block_pool_addr)};
+
+    void *super_block_addr{
+        reinterpret_cast<void *>(super_block_pool->storage[id])};
+
+    SuperBlock *super_block{new (super_block_addr) SuperBlock(
+        base->arena_id, *extent_manager, slot_size)};
+    int idx{};
+    while (true) {
+      if (!super_block_pool->occupied[idx]) {
+        idx++;
+        continue;
+      }
+      super_block_pool->occupied[idx] = true;
+      break;
+    }
+    return super_block;
   };
+
+  SuperBlock *get_super_block_class_or_null(std::size_t id) {
+    void *super_block_classes{get_super_block_classes()};
+    SuperBlockPoolClasses *pool_classes{
+        reinterpret_cast<SuperBlockPoolClasses *>(super_block_classes)};
+    SuperBlock **classes_array{pool_classes->super_block_pool_classes};
+    if (classes_array[id])
+      return classes_array[id];
+    return nullptr;
+  }
 
 public:
   arena(std::uint32_t id, std::uint32_t core, std::uint32_t flags_config) {
@@ -183,7 +241,32 @@ public:
 
     os_api::commit_memory(base, 4096);
   };
-  void *alloc(std::size_t size) {
+  void *alloc(std::size_t id, std::size_t size) {
+    // Given the current work done in tcache initially i would be expecting and
+    // idx matching the already 17 classes
+    // i will work later in the paths that involve alignment and a size bigger
+    // also if tcache needs a rework or additional path i will do it later for
+    // now assume a simple id matchen a class
+    SuperBlock *super_block{get_super_block_class_or_null(id)};
+    if (super_block) {
+      // i dont know what to do with the hint or where should that come from
+      // also this is retuning just  a slot a chunk of the requesten memory
+      // should i retun a batch for the tcache if so i need to rethink alloc
+      // from the super block
+      return super_block->allocate_atomic_span(0);
+    } else {
+      ArenaStats *arena_stats{
+          reinterpret_cast<ArenaStats *>(get_arena_stats())};
+      bool has_space{has_arena_space(arena_stats)};
 
+      if (!has_space)
+        return nullptr;
+
+      if (!has_super_block_space(arena_stats))
+        return nullptr;
+
+      SuperBlock *super_block{alloc_super_block(size, id)};
+      return super_block->allocate_atomic_span(0);
+    }
   };
 };

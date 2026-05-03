@@ -83,7 +83,7 @@ public:
 
     if (counts[n] == 0) {
       // ask for more block empty bin
-      FreeNode *fill_bin{get_arena_memory_batch()};
+      FreeNode* fill_bin {get_arena_memory_batch()};
       buckets[n] = fill_bin;
       ++counts[n];
     }
