@@ -1,11 +1,10 @@
 #include "extent_manager.h"
+#include "map_size.h"
 #include "os_api.h"
 #include "super_block.h"
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <optional>
-#include <uchar.h>
 
 class arena {
 private:
@@ -112,7 +111,7 @@ private:
         align_up(arena_base->extent_manager_pool_offset, 4096);
 
     arena_base->total_usable_size =
-        (default_arena_size - arena_base->usable_region_offset) * 1024;
+        (default_arena_size * 1024) - arena_base->usable_region_offset;
 
     return arena_base;
   };
@@ -186,32 +185,38 @@ private:
            SuperBlock::get_super_block_size();
   }
 
-  SuperBlock *alloc_super_block(std::size_t slot_size, std::size_t id) {
+  SuperBlock *alloc_super_block(std::size_t id) {
     // Have doubst in here
     // flow should be load super_block_health_addr->superblocks_active
     // then check if at that moment they are less than 4 if so proceed since we
     // can only have 4 of then i wonder if super bclok pool should be atomic in
     // iorder to see if a super block for that size is alrady here then recheck
     // for 4 and for empty slot and if so allocate
+    SuperBlock *super_block{nullptr};
     void *super_block_pool_addr{get_super_block_pool()};
 
     SuperBlockPool *super_block_pool{
         reinterpret_cast<SuperBlockPool *>(super_block_pool_addr)};
 
-    void *super_block_addr{
-        reinterpret_cast<void *>(super_block_pool->storage[id])};
+    void *super_block_pool_classes_offset{get_super_block_classes()};
 
-    SuperBlock *super_block{new (super_block_addr) SuperBlock(
-        base->arena_id, *extent_manager, slot_size)};
-    int idx{};
-    while (true) {
-      if (!super_block_pool->occupied[idx]) {
-        idx++;
+    SuperBlockPoolClasses *super_block_pool_classes{
+        reinterpret_cast<SuperBlockPoolClasses *>(
+            super_block_pool_classes_offset)};
+
+    for (int i{}; i < 4; i++) {
+      if (super_block_pool->occupied[i])
         continue;
-      }
-      super_block_pool->occupied[idx] = true;
+
+      void *super_block_addr{
+          reinterpret_cast<void *>(super_block_pool->storage[i])};
+      super_block = new (super_block_pool_addr)
+          SuperBlock(base->arena_id, *extent_manager, map_info[id].size);
+      super_block_pool_classes->super_block_pool_classes[id] = super_block;
+      super_block_pool->occupied[i] = true;
       break;
     }
+
     return super_block;
   };
 
@@ -234,14 +239,14 @@ public:
 
     void *base{mem_info.addr};
 
+    os_api::commit_memory(base, 4096);
+
     ArenaHeader *arena_base = init_header(base, id, core, flags_config);
     base = arena_base->arena_base;
     init_arena_stats(arena_base);
     init_extent_manager(arena_base);
-
-    os_api::commit_memory(base, 4096);
   };
-  void *alloc(std::size_t id, std::size_t size) {
+  void *alloc(std::size_t id) {
     // Given the current work done in tcache initially i would be expecting and
     // idx matching the already 17 classes
     // i will work later in the paths that involve alignment and a size bigger
@@ -265,7 +270,7 @@ public:
       if (!has_super_block_space(arena_stats))
         return nullptr;
 
-      SuperBlock *super_block{alloc_super_block(size, id)};
+      SuperBlock *super_block{alloc_super_block(id)};
       return super_block->allocate_atomic_span(0);
     }
   };
