@@ -5,8 +5,9 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <new>
 
-class arena {
+class Arena {
 private:
   static constexpr std::size_t NUM_CLASSES{17};
   // Size of arena is 256 but allocated an extra page for header and metadata
@@ -146,11 +147,31 @@ private:
         ExtentManager(pool_base, pool_size, usable_base, usable_size);
   };
 
+  void init_super_block_pool() {
+    void *super_block_pool_addr{get_super_block_pool()};
+    new (super_block_pool_addr) SuperBlockPool();
+  };
+
+  void init_super_block_classes() {
+    void *super_block_classes_addr{get_super_block_classes()};
+    new (super_block_classes_addr) SuperBlockPoolClasses();
+  };
+
+  void init_extent_manager_pool() {
+    void *extent_manager_pool_addr{get_extent_manager_pool()};
+    new (extent_manager_pool_addr) ExtentManagerPool();
+  };
+
+  void init_super_block_health() {
+    void *super_block_health_addr{get_super_block_health_address()};
+    new (super_block_health_addr) SuperBlockHealth();
+  };
+
   void *get_arena_stats() {
     return reinterpret_cast<void *>(
         reinterpret_cast<std::uintptr_t>(base->arena_base) +
         base->arena_stats_offset);
-  }
+  };
 
   void *get_super_block_pool() {
     return reinterpret_cast<void *>(
@@ -158,20 +179,22 @@ private:
         base->super_block_pool_offset);
   };
 
-  void *get_super_pool_address() {
-    return reinterpret_cast<void *>(reinterpret_cast<std::uintptr_t>(base) +
-                                    base->super_block_pool_offset);
-  };
-
   void *get_super_block_health_address() {
-    return reinterpret_cast<void *>(reinterpret_cast<std::uintptr_t>(base) +
-                                    base->super_block_health_offset);
+    return reinterpret_cast<void *>(
+        reinterpret_cast<std::uintptr_t>(base->arena_base) +
+        base->super_block_health_offset);
   };
 
   void *get_super_block_classes() {
     return reinterpret_cast<void *>(
         reinterpret_cast<std::uintptr_t>(base->arena_base) +
         base->super_block_classes_offset);
+  };
+
+  void *get_extent_manager_pool() {
+    return reinterpret_cast<void *>(
+        reinterpret_cast<std::uintptr_t>(base->arena_base) +
+        base->extent_manager_pool_offset);
   }
 
   bool has_arena_space(ArenaStats *arena_stats) {
@@ -210,10 +233,13 @@ private:
 
       void *super_block_addr{
           reinterpret_cast<void *>(super_block_pool->storage[i])};
-      super_block = new (super_block_pool_addr)
+      super_block = new (super_block_addr)
           SuperBlock(base->arena_id, *extent_manager, map_info[id].size);
       super_block_pool_classes->super_block_pool_classes[id] = super_block;
       super_block_pool->occupied[i] = true;
+      ArenaStats *stats{reinterpret_cast<ArenaStats *>(get_arena_stats())};
+      stats->bytes_allocated.fetch_add(SuperBlock::get_super_block_size(),
+                                       std::memory_order_release);
       break;
     }
 
@@ -231,7 +257,7 @@ private:
   }
 
 public:
-  arena(std::uint32_t id, std::uint32_t core, std::uint32_t flags_config) {
+  Arena(std::uint32_t id, std::uint32_t core, std::uint32_t flags_config) {
     std::size_t arena_bytes{default_arena_size * 1024};
     os_api::MemSpan mem_info;
 
@@ -242,9 +268,13 @@ public:
     os_api::commit_memory(base, 4096);
 
     ArenaHeader *arena_base = init_header(base, id, core, flags_config);
-    base = arena_base->arena_base;
+    this->base = arena_base;
     init_arena_stats(arena_base);
+    init_extent_manager_pool();
     init_extent_manager(arena_base);
+    init_super_block_health();
+    init_super_block_pool();
+    init_super_block_classes();
   };
   void *alloc(std::size_t id) {
     // Given the current work done in tcache initially i would be expecting and
@@ -253,25 +283,25 @@ public:
     // also if tcache needs a rework or additional path i will do it later for
     // now assume a simple id matchen a class
     SuperBlock *super_block{get_super_block_class_or_null(id)};
-    if (super_block) {
+    if (super_block && !super_block->is_full()) {
       // i dont know what to do with the hint or where should that come from
       // also this is retuning just  a slot a chunk of the requesten memory
       // should i retun a batch for the tcache if so i need to rethink alloc
       // from the super block
       return super_block->allocate_atomic_span(0);
-    } else {
-      ArenaStats *arena_stats{
-          reinterpret_cast<ArenaStats *>(get_arena_stats())};
-      bool has_space{has_arena_space(arena_stats)};
-
-      if (!has_space)
-        return nullptr;
-
-      if (!has_super_block_space(arena_stats))
-        return nullptr;
-
-      SuperBlock *super_block{alloc_super_block(id)};
-      return super_block->allocate_atomic_span(0);
     }
+    ArenaStats *arena_stats{reinterpret_cast<ArenaStats *>(get_arena_stats())};
+    bool has_space{has_arena_space(arena_stats)};
+
+    if (!has_space)
+      return nullptr;
+
+    if (!has_super_block_space(arena_stats))
+      return nullptr;
+
+    super_block = alloc_super_block(id);
+    if (!super_block)
+      return nullptr;
+    return super_block->allocate_atomic_span(0);
   };
 };
