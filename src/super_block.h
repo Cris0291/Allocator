@@ -39,4 +39,5 @@ public:
   bool is_empty();
   uint32_t free_count();
   void release();
+  bool is_range(std::uintptr_t ptr);
 };

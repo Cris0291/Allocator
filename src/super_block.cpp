@@ -119,3 +119,8 @@ uint32_t SuperBlock::free_count() {
 void SuperBlock::release() {
   manager.free_extent(reinterpret_cast<std::uintptr_t>(raw_base), span_size);
 }
+
+bool SuperBlock::is_range(std::uintptr_t ptr) {
+  std::uintptr_t base{reinterpret_cast<std::uintptr_t>(raw_base)};
+  return base <= ptr && ptr <= (base + span_size);
+}

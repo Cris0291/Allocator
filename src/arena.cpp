@@ -54,7 +54,7 @@ private:
   };
 
   struct SuperBlockPoolClasses {
-    SuperBlock *super_block_pool_classes[NUM_CLASSES];
+    SuperBlock *super_block_pool_classes[NUM_CLASSES]{};
   };
 
   ExtentManager *extent_manager;
@@ -157,11 +157,6 @@ private:
     new (super_block_classes_addr) SuperBlockPoolClasses();
   };
 
-  void init_extent_manager_pool() {
-    void *extent_manager_pool_addr{get_extent_manager_pool()};
-    new (extent_manager_pool_addr) ExtentManagerPool();
-  };
-
   void init_super_block_health() {
     void *super_block_health_addr{get_super_block_health_address()};
     new (super_block_health_addr) SuperBlockHealth();
@@ -246,6 +241,30 @@ private:
     return super_block;
   };
 
+  SuperBlock *find_super_block(std::uintptr_t ptr) {
+    // potential refactor with previous function
+    // maybe add a template to accept a lanbda function the idea is
+    // to be able to dins a super block on different consitions we will see
+    SuperBlock *super_block{nullptr};
+    void *super_block_pool_addr{get_super_block_pool()};
+
+    SuperBlockPool *super_block_pool{
+        reinterpret_cast<SuperBlockPool *>(super_block_pool_addr)};
+
+    for (int i{}; i < 4; i++) {
+      if (!super_block_pool->occupied[i])
+        continue;
+
+      void *super_block_addr{
+          reinterpret_cast<void *>(super_block_pool->storage[i])};
+      super_block = reinterpret_cast<SuperBlock *>(super_block_addr);
+      if (super_block->is_range(ptr))
+        return super_block;
+    }
+
+    return super_block;
+  };
+
   SuperBlock *get_super_block_class_or_null(std::size_t id) {
     void *super_block_classes{get_super_block_classes()};
     SuperBlockPoolClasses *pool_classes{
@@ -270,7 +289,6 @@ public:
     ArenaHeader *arena_base = init_header(base, id, core, flags_config);
     this->base = arena_base;
     init_arena_stats(arena_base);
-    init_extent_manager_pool();
     init_extent_manager(arena_base);
     init_super_block_health();
     init_super_block_pool();
@@ -303,5 +321,17 @@ public:
     if (!super_block)
       return nullptr;
     return super_block->allocate_atomic_span(0);
+  };
+
+  void free(void *ptr) {
+    // Here i need to make a distinction between memory managed by the
+    // superblock and memory managed fron the extend purely since some requests
+    // might exceed the max chuk size of teh block
+    SuperBlock *super_block{
+        find_super_block(reinterpret_cast<std::uintptr_t>(ptr))};
+    if (super_block) {
+      super_block->free_atomic_span(ptr);
+    }
+    // find in extent manager
   };
 };
