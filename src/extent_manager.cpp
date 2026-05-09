@@ -34,7 +34,8 @@ ExtentManager::ExtentManager(std::uintptr_t pool_base, std::size_t pool_size,
   rb_insert_color(&entry->rb, &root);
 }
 
-void *ExtentManager::alloc_extent(std::size_t size_node) {
+void *ExtentManager::alloc_extent(std::size_t size) {
+  std::size_t size_node{size + sizeof(ExtentHeader)};
   RBNode *node{rb_first(&root)};
   Entry *entry{nullptr};
   while (node) {
@@ -47,29 +48,34 @@ void *ExtentManager::alloc_extent(std::size_t size_node) {
     return nullptr;
 
   if (entry->size == size_node) {
-    void *addr{reinterpret_cast<void *>(entry->base)};
+    void *base{ExtentManager::include_header(entry->base, size)};
     erase(entry->base);
     free_pool_node(entry);
-    return addr;
+    return base;
   } else if (entry->size > size_node) {
     std::uintptr_t allocated_addr{entry->base};
     std::uintptr_t new_base{entry->base + size_node};
     std::size_t remaining_size{entry->size - size_node};
     entry->size = remaining_size;
     entry->base = new_base;
-    return reinterpret_cast<void *>(allocated_addr);
+    void *base{ExtentManager::include_header(allocated_addr, size)};
+    return base;
   }
 
   return nullptr;
 }
 
-void ExtentManager::free_extent(std::uintptr_t base, std::size_t size) {
-  // 0 variables init
+void ExtentManager::free_extent(void *base_header) {
+  ExtentHeader *header{reinterpret_cast<ExtentHeader *>(base_header)};
+  std::size_t size{header->size};
+
   Entry *prev{nullptr};
   Entry *next{nullptr};
   Entry *entry{nullptr};
 
-  entry = insert_new_node(base, size);
+  std::size_t size_with_header{size + sizeof(ExtentHeader)};
+  entry = insert_new_node(reinterpret_cast<std::uintptr_t>(base_header),
+                          size_with_header);
   RBNode *next_node{&entry->rb};
   next_node = rb_next(next_node);
   RBNode *prev_node{&entry->rb};

@@ -262,7 +262,7 @@ private:
         return super_block;
     }
 
-    return super_block;
+    return nullptr;
   };
 
   SuperBlock *get_super_block_class_or_null(std::size_t id) {
@@ -273,6 +273,11 @@ private:
     if (classes_array[id])
       return classes_array[id];
     return nullptr;
+  }
+
+  bool is_range_arena(std::uintptr_t ptr) {
+    base->usable_region_offset <= ptr &&ptr <
+        (base->usable_region_offset + base->total_usable_size);
   }
 
 public:
@@ -323,15 +328,27 @@ public:
     return super_block->allocate_atomic_span(0);
   };
 
-  void free(void *ptr) {
+  bool free(void *ptr) {
     // Here i need to make a distinction between memory managed by the
     // superblock and memory managed fron the extend purely since some requests
     // might exceed the max chuk size of teh block
-    SuperBlock *super_block{
-        find_super_block(reinterpret_cast<std::uintptr_t>(ptr))};
+    std::uintptr_t ptr_addr{reinterpret_cast<std::uintptr_t>(ptr)};
+
+    if (!is_range_arena(ptr_addr))
+      return false;
+
+    SuperBlock *super_block{find_super_block(ptr_addr)};
+
     if (super_block) {
       super_block->free_atomic_span(ptr);
+      return true;
+      ;
     }
-    // find in extent manager
+
+    void *base_header{ExtentManager::get_base_header(ptr_addr)};
+
+    extent_manager->free_extent(base_header);
+
+    return true;
   };
 };
