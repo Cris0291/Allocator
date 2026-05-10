@@ -1,4 +1,5 @@
 #include "super_block.h"
+#include "extent_manager.h"
 
 std::size_t SuperBlock::bitmap_size_convergence_routine(std::size_t header_sz) {
   std::size_t N0 = std::floor(span_size - header_sz) / SLOT_SIZE;
@@ -116,7 +117,11 @@ uint32_t SuperBlock::free_count() {
   return super_block_header->free_count.load(std::memory_order_acquire);
 }
 
-void SuperBlock::release() { manager.free_extent(raw_base); }
+void SuperBlock::release() {
+  void *header{ExtentManager::get_base_header(
+      reinterpret_cast<std::uintptr_t>(raw_base))};
+  manager.free_extent(header);
+}
 
 bool SuperBlock::is_range(std::uintptr_t ptr) {
   std::uintptr_t base{reinterpret_cast<std::uintptr_t>(raw_base)};

@@ -276,8 +276,8 @@ private:
   }
 
   bool is_range_arena(std::uintptr_t ptr) {
-    base->usable_region_offset <= ptr &&ptr <
-        (base->usable_region_offset + base->total_usable_size);
+    return base->usable_region_offset <= ptr &&
+           ptr < (base->usable_region_offset + base->total_usable_size);
   }
 
 public:
