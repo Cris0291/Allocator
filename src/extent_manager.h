@@ -54,6 +54,7 @@ private:
   void erase(std::uintptr_t key);
 
 public:
+  static constexpr std::size_t HEADER_SIZE{sizeof(ExtentHeader)};
   ExtentManager(std::uintptr_t pool_base, std::size_t pool_size,
                 std::uintptr_t usable_base, std::size_t usable_size);
   void *alloc_extent(std::size_t size_node);
@@ -62,5 +63,12 @@ public:
 
   inline static void *get_base_header(std::uintptr_t base) {
     return reinterpret_cast<void *>(base - sizeof(ExtentHeader));
+  }
+
+  inline static std::size_t get_header_size(void *ptr) {
+    std::uintptr_t ptr_addr{reinterpret_cast<std::uintptr_t>(ptr)};
+    ExtentHeader *header{
+        reinterpret_cast<ExtentHeader *>(ptr_addr - sizeof(ExtentHeader))};
+    return header->size;
   }
 };

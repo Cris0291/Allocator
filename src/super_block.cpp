@@ -1,5 +1,6 @@
 #include "super_block.h"
 #include "extent_manager.h"
+#include <cstddef>
 
 std::size_t SuperBlock::bitmap_size_convergence_routine(std::size_t header_sz) {
   std::size_t N0 = std::floor(span_size - header_sz) / SLOT_SIZE;
@@ -127,3 +128,5 @@ bool SuperBlock::is_range(std::uintptr_t ptr) {
   std::uintptr_t base{reinterpret_cast<std::uintptr_t>(raw_base)};
   return base <= ptr && ptr < (base + span_size);
 }
+
+std::size_t SuperBlock::get_slot_size() { return SLOT_SIZE; }

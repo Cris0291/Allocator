@@ -30,7 +30,8 @@ private:
   std::uintptr_t align_up(std::uintptr_t x, std::size_t size);
 
 public:
-  inline static std::size_t get_super_block_size() { return span_size; }
+  inline static std::size_t get_super_block_size() { return span_size; };
+  std::size_t get_slot_size();
   SuperBlock(uint32_t class_id, ExtentManager &extent_manager,
              std::size_t slot_size);
   void *allocate_atomic_span(std::size_t hint_word);

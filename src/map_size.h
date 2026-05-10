@@ -22,3 +22,4 @@ constexpr MapSizeAlignment map_info[] = {
 constexpr std::size_t NUM_CLASSES = std::size(map_info);
 constexpr std::size_t ALLOC_MIN_ALIGNMENT{alignof(std::max_align_t)};
 constexpr uint8_t NO_CLASS{0xff};
+constexpr std::size_t MAX_CLASS_SIZE{512};

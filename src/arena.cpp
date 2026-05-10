@@ -276,8 +276,36 @@ private:
   }
 
   bool is_range_arena(std::uintptr_t ptr) {
-    return base->usable_region_offset <= ptr &&
-           ptr < (base->usable_region_offset + base->total_usable_size);
+    std::uintptr_t start{reinterpret_cast<std::uintptr_t>(base->arena_base) +
+                         base->usable_region_offset};
+    std::uintptr_t end{start + base->total_usable_size};
+    return start <= ptr && ptr < end;
+  }
+
+  ArenaStats *get_arena_stats_pointer() {
+    void *arena_stats_addr{get_arena_stats()};
+    ArenaStats *arena_stats{reinterpret_cast<ArenaStats *>(arena_stats_addr)};
+    return arena_stats;
+  }
+
+  void set_bytes_allocated(std::size_t size, bool is_extent) {
+    std::size_t final_size{is_extent ? size + ExtentManager::HEADER_SIZE
+                                     : size};
+    ArenaStats *arena_stats{get_arena_stats_pointer()};
+    arena_stats->bytes_allocated.fetch_add(final_size,
+                                           std::memory_order_release);
+  }
+
+  void set_bytes_freed_extent(void *ptr) {
+    ArenaStats *arena_stats{get_arena_stats_pointer()};
+    std::size_t size{ExtentManager::get_header_size(ptr)};
+    arena_stats->bytes_free.fetch_add(size + ExtentManager::HEADER_SIZE,
+                                      std::memory_order_release);
+  }
+
+  void set_bytes_freed_super_block(std::size_t size) {
+    ArenaStats *arena_stats{get_arena_stats_pointer()};
+    arena_stats->bytes_free.fetch_add(size, std::memory_order_release);
   }
 
 public:
@@ -299,19 +327,28 @@ public:
     init_super_block_pool();
     init_super_block_classes();
   };
-  void *alloc(std::size_t id) {
+  void *alloc(std::size_t id, std::size_t size) {
     // Given the current work done in tcache initially i would be expecting and
     // idx matching the already 17 classes
     // i will work later in the paths that involve alignment and a size bigger
     // also if tcache needs a rework or additional path i will do it later for
     // now assume a simple id matchen a class
+    void *raw;
+    if (size >= MAX_CLASS_SIZE) {
+      raw = extent_manager->alloc_extent(size);
+      if (raw)
+        set_bytes_allocated(size, true);
+      return raw;
+    }
     SuperBlock *super_block{get_super_block_class_or_null(id)};
     if (super_block && !super_block->is_full()) {
       // i dont know what to do with the hint or where should that come from
       // also this is retuning just  a slot a chunk of the requesten memory
       // should i retun a batch for the tcache if so i need to rethink alloc
       // from the super block
-      return super_block->allocate_atomic_span(0);
+      raw = super_block->allocate_atomic_span(0);
+      set_bytes_allocated(size, false);
+      return raw;
     }
     ArenaStats *arena_stats{reinterpret_cast<ArenaStats *>(get_arena_stats())};
     bool has_space{has_arena_space(arena_stats)};
@@ -325,7 +362,9 @@ public:
     super_block = alloc_super_block(id);
     if (!super_block)
       return nullptr;
-    return super_block->allocate_atomic_span(0);
+    raw = super_block->allocate_atomic_span(0);
+    set_bytes_allocated(size, false);
+    return raw;
   };
 
   bool free(void *ptr) {
@@ -340,13 +379,13 @@ public:
     SuperBlock *super_block{find_super_block(ptr_addr)};
 
     if (super_block) {
+      set_bytes_freed_super_block(super_block->get_slot_size());
       super_block->free_atomic_span(ptr);
       return true;
-      ;
     }
 
     void *base_header{ExtentManager::get_base_header(ptr_addr)};
-
+    set_bytes_freed_extent(ptr);
     extent_manager->free_extent(base_header);
 
     return true;
