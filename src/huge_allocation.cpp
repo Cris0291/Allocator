@@ -6,12 +6,20 @@
 
 void *HugeAlloc::alloc(std::size_t size, std::size_t alignment) {
   os_api::MemSpan mem_span;
-  os_api::OsResult res{os_api::reserve_address_space(size + sizeof(HugeHeader),
-                                                     alignment, mem_span)};
+  os_api::OsResult res;
+  res = os_api::reserve_address_space(size + sizeof(HugeHeader), alignment,
+                                      mem_span);
   if (res != os_api::OsResult::Success)
     return nullptr;
-  void *raw{HugeAlloc::include_header(
-      reinterpret_cast<std::uintptr_t>(mem_span.addr), mem_span.size)};
+
+  res = os_api::commit_memory(mem_span.addr, mem_span.size);
+
+  if (res != os_api::OsResult::Success)
+    return nullptr;
+
+  void *raw{
+      HugeAlloc::include_header(reinterpret_cast<std::uintptr_t>(mem_span.addr),
+                                mem_span.size - sizeof(HugeHeader))};
   return raw;
 };
 

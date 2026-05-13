@@ -24,14 +24,16 @@ os_api::OsResult os_api::reserve_address_space(std::size_t size,
 
   std::uintptr_t prefix{aligned_base - base};
   // is this right to use mmaped also is normal size or rounded
-  munmap(mapped, prefix);
+  if (prefix > 0)
+    munmap(mapped, prefix);
 
-  std::uintptr_t suffix{(base + mmap_len) - (aligned_base + size)};
-  void *mapped_suffix{reinterpret_cast<void *>((aligned_base + size))};
-  munmap(mapped_suffix, suffix);
+  std::uintptr_t suffix{(base + mmap_len) - (aligned_base + rounded_size)};
+  void *mapped_suffix{reinterpret_cast<void *>((aligned_base + rounded_size))};
+  if (suffix > 0)
+    munmap(mapped_suffix, suffix);
 
   out.addr = (void *)aligned_base;
-  out.size = aligned_base + size;
+  out.size = rounded_size;
   out.committed = 0;
   out.numa_node = -1;
 
@@ -51,7 +53,7 @@ os_api::OsResult os_api::commit_memory(void *addr, std::size_t length) {
   // need to see if threads ar racing and if memory belongs to this arena
   std::uintptr_t base_addr{reinterpret_cast<std::uintptr_t>(addr)};
 
-  if ((base_addr % PAGE_SIZE) != 0 || (length & PAGE_SIZE) != 0)
+  if ((base_addr % PAGE_SIZE) != 0 || (length % PAGE_SIZE) != 0)
     return os_api::OsResult::InvalidArgument;
 
   volatile char *p{static_cast<volatile char *>(addr)};
