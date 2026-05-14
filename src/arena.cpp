@@ -1,4 +1,5 @@
 #include "extent_manager.h"
+#include "lock_free_stack.h"
 #include "map_size.h"
 #include "os_api.h"
 #include "super_block.h"
@@ -26,6 +27,7 @@ private:
     std::uintptr_t super_block_classes_offset;
     std::uintptr_t extent_manager_offset;
     std::uintptr_t extent_manager_pool_offset;
+    std::uintptr_t lock_free_stack_offset;
     std::uintptr_t usable_region_offset;
     void *arena_base;
   };
@@ -82,21 +84,22 @@ private:
 
     std::uintptr_t base_ptr{reinterpret_cast<std::uintptr_t>(base)};
     std::uintptr_t header_offset{sizeof(ArenaHeader)};
-    std::uintptr_t hreader_alignup_offset{align_up(header_offset, 64)};
+    std::uintptr_t header_alignup_offset{align_up(header_offset, 64)};
 
     // Offset   Size   Description
     //-----    ----   -----------
-    // 0         88    ArenaHeader(64 bit)
-    // 88        40    Padding for the next cache line
+    // 0         96    ArenaHeader(64 bit)
+    // 96        32    Padding for the next cache line
     // 128       64    ArenaStats
     // 192       64    SuperBlockHealth
     // 256       192   SuperBlockPool
     // 448       136   SuperBlockClasses
     // 592       40    ExtentManager
     // 632      3072   Extent manager pool
-    // 3704     392    Padding to usable memory
+    // 3704      8     Lock free stack
+    // 3710     386         Padding to usable memory
     // 4096
-    arena_base->arena_stats_offset = hreader_alignup_offset;
+    arena_base->arena_stats_offset = header_alignup_offset;
     arena_base->super_block_health_offset =
         arena_base->arena_stats_offset + sizeof(ArenaStats);
     arena_base->super_block_pool_offset =
@@ -107,9 +110,11 @@ private:
         arena_base->super_block_classes_offset + sizeof(SuperBlockPoolClasses);
     arena_base->extent_manager_pool_offset =
         arena_base->extent_manager_offset + sizeof(ExtentManager);
+    arena_base->lock_free_stack_offset =
+        arena_base->extent_manager_pool_offset + sizeof(LockFreeStack);
 
     arena_base->usable_region_offset =
-        align_up(arena_base->extent_manager_pool_offset, 4096);
+        align_up(arena_base->lock_free_stack_offset, 4096);
 
     arena_base->total_usable_size =
         (default_arena_size * 1024) - arena_base->usable_region_offset;
@@ -162,6 +167,11 @@ private:
     new (super_block_health_addr) SuperBlockHealth();
   };
 
+  void init_lock_free_stack() {
+    void *lock_free_stack_addr{get_lock_free_stack()};
+    new (lock_free_stack_addr) LockFreeStack();
+  };
+
   void *get_arena_stats() {
     return reinterpret_cast<void *>(
         reinterpret_cast<std::uintptr_t>(base->arena_base) +
@@ -190,7 +200,13 @@ private:
     return reinterpret_cast<void *>(
         reinterpret_cast<std::uintptr_t>(base->arena_base) +
         base->extent_manager_pool_offset);
-  }
+  };
+
+  void *get_lock_free_stack() {
+    return reinterpret_cast<void *>(
+        reinterpret_cast<std::uintptr_t>(base->arena_base) +
+        base->lock_free_stack_offset);
+  };
 
   bool has_arena_space(ArenaStats *arena_stats) {
     return base->total_usable_size >
@@ -326,6 +342,7 @@ public:
     init_super_block_health();
     init_super_block_pool();
     init_super_block_classes();
+    init_lock_free_stack();
   };
   void *alloc(std::size_t id, std::size_t size) {
     // Given the current work done in tcache initially i would be expecting and

@@ -2,24 +2,16 @@
 #include <atomic>
 #include <new>
 
-void LockFreeStack::push(std::uintptr_t addr) {
-  // this nodes will live in a dedicated memory on the header of each arena
-  // get arena memory
-  void *raw;
-  LockFreeStack::node *new_node{new (raw) LockFreeStack::node(addr)};
-  new_node->next = head.load(std::memory_order_acquire);
-  while (!head.compare_exchange_weak(new_node->next, new_node))
+void LockFreeStack::push(void *ptr) {
+  node *new_node{reinterpret_cast<node *>(ptr)};
+  new_node->next = head.load(std::memory_order_relaxed);
+  while (!head.compare_exchange_weak(new_node->next, new_node,
+                                     std::memory_order_release))
     ;
 };
 
-std::uintptr_t LockFreeStack::pop() {
-  LockFreeStack::node *old_head = head.load(std::memory_order_acquire);
-  while (old_head && !head.compare_exchange_weak(old_head, old_head->next))
-    ;
-  return old_head->addr;
-};
-
-LockFreeStack::node *LockFreeStack::pop_all() {
-  LockFreeStack::node *nodes{head.exchange(nullptr)};
-  return nodes;
+LockFreeStack::node *LockFreeStack::pop() {
+  node *node_list{head.exchange(nullptr, std::memory_order_acquire)};
+  return node_list;
+  // this will be handled at the arena level since it is the onlt consumer
 };
