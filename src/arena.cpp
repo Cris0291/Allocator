@@ -304,6 +304,11 @@ private:
     return arena_stats;
   }
 
+  LockFreeStack *get_lock_free_stack_pointer() {
+    void *lock_free_stack_addr{get_lock_free_stack()};
+    return reinterpret_cast<LockFreeStack *>(lock_free_stack_addr);
+  };
+
   void set_bytes_allocated(std::size_t size, bool is_extent) {
     std::size_t final_size{is_extent ? size + ExtentManager::HEADER_SIZE
                                      : size};
@@ -350,6 +355,14 @@ public:
     // i will work later in the paths that involve alignment and a size bigger
     // also if tcache needs a rework or additional path i will do it later for
     // now assume a simple id matchen a class
+    LockFreeStack *lock_free_stack{get_lock_free_stack_pointer()};
+    LockFreeStack::node *lock_node{lock_free_stack->pop()};
+    while (lock_node) {
+      void *raw{reinterpret_cast<void *>(lock_node)};
+      free(raw);
+      lock_node = lock_node->next;
+    }
+
     void *raw;
     if (size >= MAX_CLASS_SIZE) {
       raw = extent_manager->alloc_extent(size);
@@ -406,5 +419,10 @@ public:
     extent_manager->free_extent(base_header);
 
     return true;
+  };
+
+  void free_remote(void *ptr) {
+    LockFreeStack *lock_free_stack{get_lock_free_stack_pointer()};
+    lock_free_stack->push(ptr);
   };
 };
