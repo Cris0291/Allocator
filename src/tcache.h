@@ -1,20 +1,20 @@
 #pragma once
 
-#include "alloc_route.h"
+#include "alloc_init.h"
 #include "arena.h"
 #include "chunk.h"
 #include <cstddef>
-#include <utility>
 
-class Tcache {
+class TCache {
 private:
-  FreeNode *bucket[NUM_CLASSES];
+  static constexpr std::size_t MIN_ALLOCATOR_SIZE{8};
+  FreeNode *buckets[NUM_CLASSES];
   int count[NUM_CLASSES];
   AllocRoute *alloc_route{nullptr};
-  std::pair<std::size_t, std::size_t> find(std::size_t size);
+  int find(std::size_t size);
 
 public:
-  Tcache();
+  TCache();
   void *allocate(std::size_t size);
   void free(void *raw);
 };

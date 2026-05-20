@@ -1,6 +1,9 @@
 #pragma once
 
+#include "alloc_route.h"
 #include "arena.h"
+#include <new>
+#include <utility>
 
 #ifdef __linux__
 #include <sched.h>
@@ -21,7 +24,29 @@ inline int get_current_core() { return GetCurrentProcessorNumber; }
 
 inline Arena **arena_pool{nullptr};
 
-inline int init_arena_pool(std::size_t alignment, std::uint32_t flags) {
+struct InitState {
+  Arena **arenas;
+  AllocRoute *route;
+  int num_cores;
+};
+
+inline InitState global_init_state{};
+
+inline AllocRoute *init_alloc_route() {
+  os_api::MemSpan route_mem;
+  os_api::OsResult res{os_api::reserve_address_space(
+      sizeof(AllocRoute), os_api::PAGE_SIZE, route_mem)};
+  if (res != os_api::OsResult::Success) {
+    throw std::bad_alloc{};
+  }
+
+  os_api::commit_memory(route_mem.addr, route_mem.size);
+  AllocRoute *route{reinterpret_cast<AllocRoute *>(route_mem.addr)};
+  return route;
+};
+
+inline std::pair<int, Arena **> init_arena_pool(std::size_t alignment,
+                                                std::uint32_t flags) {
   // Here we can tweak a bit the configuration either by passing flags or having
   // a didecated behavior per arena we could even create more arenas if needed
   // and reserve them alignmen should be dictated by user for now 0
@@ -49,7 +74,19 @@ inline int init_arena_pool(std::size_t alignment, std::uint32_t flags) {
     arena_pool[i] = arena;
   }
 
-  return num_cores;
+  return {num_cores, arena_pool};
 };
 
-inline Arena **get_arena_pool() { return arena_pool; }
+inline void init_allocator(std::size_t alignment, std::uint32_t flags) {
+
+  AllocRoute *alloc_route{init_alloc_route()};
+  std::pair<int, Arena **> pool_res{init_arena_pool(alignment, flags)};
+
+  global_init_state.route = alloc_route;
+  global_init_state.arenas = pool_res.second;
+  global_init_state.num_cores = pool_res.first;
+};
+
+inline AllocRoute *get_alloc_route() { return global_init_state.route; };
+
+inline Arena **get_arena_pool() { return global_init_state.arenas; };
