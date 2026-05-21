@@ -19,7 +19,7 @@ void *TCache::allocate(std::size_t size) {
 
   int idx{find(size)};
 
-  if (buckets[idx]) {
+  if (buckets[idx] && count[idx] != 0) {
     FreeNode *buket_list{buckets[idx]};
     count[idx]--;
     FreeNode *res = buket_list;
@@ -27,5 +27,11 @@ void *TCache::allocate(std::size_t size) {
     res->next = nullptr;
     return reinterpret_cast<void *>(res);
   } else {
+    void *raw{alloc_route->alloc_thread_route(idx, map_info[idx].size)};
+    return raw;
   }
+};
+
+void TCache::free(void *raw) {
+
 };
