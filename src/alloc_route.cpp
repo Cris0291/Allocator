@@ -1,6 +1,4 @@
 #include "alloc_route.h"
-#include "arena.h"
-#include <sched.h>
 
 AllocRoute::AllocRoute(Arena **arenas, int cores)
     : num_cores(cores), arena_pool(arenas){};

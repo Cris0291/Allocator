@@ -1,5 +1,4 @@
 #include "arena.h"
-#include "lock_free_stack.h"
 
 std::uintptr_t Arena::align_up(std::uintptr_t x, std::size_t size) {
   return (x + (size - 1)) & ~(size - 1);
@@ -179,7 +178,7 @@ SuperBlock *Arena::alloc_super_block(std::size_t id) {
     void *super_block_addr{
         reinterpret_cast<void *>(super_block_pool->storage[i])};
     super_block = new (super_block_addr)
-        SuperBlock(base->arena_id, *extent_manager, map_info[id].size);
+        SuperBlock(id, *extent_manager, map_info[id].size);
     super_block_pool_classes->super_block_pool_classes[id] = super_block;
     super_block_pool->occupied[i] = true;
     ArenaStats *stats{reinterpret_cast<ArenaStats *>(get_arena_stats())};

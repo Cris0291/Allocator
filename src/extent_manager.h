@@ -14,6 +14,7 @@ public:
   };
 
 private:
+  static constexpr std::size_t ALIGNED_BASE{64 * 1024};
   RBRoot root{nullptr};
   Entry *head{nullptr};
   std::uintptr_t base_pointer;
@@ -48,6 +49,9 @@ private:
     return reinterpret_cast<void *>(base);
   };
 
+  Entry *find_node(std::size_t size);
+  std::uintptr_t align_up(std::uintptr_t x, std::size_t size);
+
   Entry *alloc_pool_node();
   void free_pool_node(Entry *entry);
   Entry *insert_new_node(std::uintptr_t new_base, std::size_t size);
@@ -57,7 +61,9 @@ public:
   static constexpr std::size_t HEADER_SIZE{sizeof(ExtentHeader)};
   ExtentManager(std::uintptr_t pool_base, std::size_t pool_size,
                 std::uintptr_t usable_base, std::size_t usable_size);
-  void *alloc_extent(std::size_t size_node);
+  void *alloc_extent(std::size_t size);
+
+  void *alloc_extent_aligned(std::size_t size);
 
   void free_extent(void *base_header);
 

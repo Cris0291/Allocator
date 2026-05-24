@@ -1,4 +1,5 @@
 #include "extent_manager.h"
+#include <cstddef>
 
 ExtentManager::Entry *ExtentManager::alloc_pool_node() {
   Entry *entry{nullptr};
@@ -34,8 +35,7 @@ ExtentManager::ExtentManager(std::uintptr_t pool_base, std::size_t pool_size,
   rb_insert_color(&entry->rb, &root);
 }
 
-void *ExtentManager::alloc_extent(std::size_t size) {
-  std::size_t size_node{size + sizeof(ExtentHeader)};
+ExtentManager::Entry *ExtentManager::find_node(std::size_t size_node) {
   RBNode *node{rb_first(&root)};
   Entry *entry{nullptr};
   while (node) {
@@ -45,6 +45,15 @@ void *ExtentManager::alloc_extent(std::size_t size) {
     node = rb_next(node);
   }
   if (!node)
+    return nullptr;
+
+  return entry;
+};
+
+void *ExtentManager::alloc_extent(std::size_t size) {
+  std::size_t size_node{size + sizeof(ExtentHeader)};
+  Entry *entry{find_node(size_node)};
+  if (!entry)
     return nullptr;
 
   if (entry->size == size_node) {
@@ -64,6 +73,43 @@ void *ExtentManager::alloc_extent(std::size_t size) {
 
   return nullptr;
 }
+
+void *ExtentManager::alloc_extent_aligned(std::size_t size) {
+  std::size_t size_node{size + sizeof(ExtentHeader) + ALIGNED_BASE};
+  Entry *entry{find_node(size_node)};
+  if (!entry)
+    return nullptr;
+
+  std::uintptr_t base_total{entry->base};
+  std::size_t size_total{entry->size};
+
+  std::uintptr_t aligned_base{
+      align_up(entry->base + sizeof(ExtentHeader), ALIGNED_BASE)};
+  std::uintptr_t aligned_base_header{aligned_base - sizeof(ExtentHeader)};
+  std::uintptr_t prefix{aligned_base_header - entry->base};
+  std::uintptr_t suffix{(entry->base + entry->size) - (aligned_base + size)};
+
+  void *base{ExtentManager::include_header(aligned_base_header, size)};
+
+  // in this case i am going to consider that all the frees are going
+  // to do pointer arithmetic to obtain the extent header
+  // so if there is not enough space in teh suffix just leave it there
+  // although it might increase internal fragmentation
+  if (prefix == 0 && suffix == 0) {
+    erase(entry->base);
+    free_pool_node(entry);
+  } else if (prefix > 0 && suffix == 0) {
+    entry->size = prefix;
+  } else if (prefix == 0 && suffix > 0) {
+    entry->base = aligned_base + size;
+    entry->size = suffix;
+  } else {
+    entry->size = prefix;
+    insert_new_node(aligned_base + size, suffix);
+  }
+
+  return base;
+};
 
 void ExtentManager::free_extent(void *base_header) {
   ExtentHeader *header{reinterpret_cast<ExtentHeader *>(base_header)};
@@ -148,3 +194,7 @@ void ExtentManager::erase(std::uintptr_t key) {
     }
   }
 }
+
+std::uintptr_t ExtentManager::align_up(std::uintptr_t x, std::size_t size) {
+  return (x + (size - 1)) & ~(size - 1);
+};
