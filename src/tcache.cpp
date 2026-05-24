@@ -1,4 +1,5 @@
 #include "tcache.h"
+#include "arena.h"
 #include <algorithm>
 #include <iterator>
 
@@ -13,6 +14,18 @@ int TCache::find(std::size_t size) {
   if (it == std::end(map_info))
     return NOCLASS;
   return std::distance(std::begin(map_info), it);
+};
+
+void TCache::flush_bucket(std::size_t id) {
+  FreeNode *node{nullptr};
+  int bucket_to_flush{count[id] / 2};
+  for (int i{}; i < bucket_to_flush; i++) {
+    node = buckets[id];
+    buckets[id] = node->next;
+    node->next = nullptr;
+    count[id]--;
+    alloc_route->free_thread_route(reinterpret_cast<void *>(node));
+  }
 };
 
 void *TCache::allocate(std::size_t size) {
@@ -49,6 +62,9 @@ void TCache::free(void *raw) {
     node->next = buckets[header->class_id];
     buckets[header->class_id] = node;
     count[header->class_id]++;
+    if (count[header->class_id] >= MAX_BUCKET_ITEMS_THRESHOLD) {
+      flush_bucket(header->class_id);
+    }
   } else {
     alloc_route->free_thread_route(raw);
   }

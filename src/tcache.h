@@ -14,6 +14,7 @@ private:
   int count[NUM_CLASSES]{};
   AllocRoute *alloc_route{nullptr};
   int find(std::size_t size);
+  void flush_bucket(std::size_t id);
 
 public:
   TCache();
