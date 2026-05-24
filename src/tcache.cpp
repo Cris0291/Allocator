@@ -10,6 +10,8 @@ int TCache::find(std::size_t size) {
                              return map_item.size < sz;
                            })};
 
+  if (it == std::end(map_info))
+    return NOCLASS;
   return std::distance(std::begin(map_info), it);
 };
 
@@ -19,13 +21,17 @@ void *TCache::allocate(std::size_t size) {
 
   int idx{find(size)};
 
+  if (idx == NOCLASS) {
+    void *raw_extent{alloc_route->alloc_thread_route(NOCLASS, size)};
+    return raw_extent;
+  }
+
   if (buckets[idx] && count[idx] != 0) {
     FreeNode *buket_list{buckets[idx]};
+    buckets[idx] = buket_list->next;
     count[idx]--;
-    FreeNode *res = buket_list;
-    buket_list = buket_list->next;
-    res->next = nullptr;
-    return reinterpret_cast<void *>(res);
+    buket_list->next = nullptr;
+    return reinterpret_cast<void *>(buket_list);
   } else {
     void *raw{alloc_route->alloc_thread_route(idx, map_info[idx].size)};
     return raw;
@@ -33,5 +39,17 @@ void *TCache::allocate(std::size_t size) {
 };
 
 void TCache::free(void *raw) {
+  std::uintptr_t ptr{reinterpret_cast<std::uintptr_t>(raw)};
+  std::uintptr_t super_block_base{ptr & ~(SuperBlock::span_size - 1)};
+  SuperBlock::SuperBlockHeader *header{
+      reinterpret_cast<SuperBlock::SuperBlockHeader *>(super_block_base)};
 
+  if (header->super_block_magic == SuperBlock::SUPER_BLOCK_MAGIC) {
+    FreeNode *node{reinterpret_cast<FreeNode *>(raw)};
+    node->next = buckets[header->class_id];
+    buckets[header->class_id] = node;
+    count[header->class_id]++;
+  } else {
+    alloc_route->free_thread_route(raw);
+  }
 };

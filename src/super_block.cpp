@@ -29,7 +29,7 @@ SuperBlock::SuperBlock(uint32_t class_id, ExtentManager &extent_manager,
   std::size_t bitmap_sz{(slots / 64) * 8};
   std::uintptr_t payload_align_sz{align_up(header_aligned_sz + bitmap_sz, 16)};
 
-  void *raw{manager.alloc_extent(span_size)};
+  void *raw{manager.alloc_extent_aligned(span_size)};
   if (!raw)
     throw std::bad_alloc{};
 
@@ -41,6 +41,7 @@ SuperBlock::SuperBlock(uint32_t class_id, ExtentManager &extent_manager,
   header->span_size = span_size;
   header->slot_size = SLOT_SIZE;
   header->n_slot = slots;
+  header->super_block_magic = 0x5B10C000;
   header->free_count = slots;
   header->payload_ptr = base + payload_align_sz;
 

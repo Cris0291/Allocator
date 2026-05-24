@@ -11,25 +11,27 @@
 
 class SuperBlock {
 private:
-  static constexpr std::size_t span_size{64 * 1024};
   ExtentManager &manager;
   void *raw_base;
   std::size_t total_number_slots;
   std::uint64_t *bitmap{};
+  std::size_t SLOT_SIZE{16};
+  std::size_t bitmap_size_convergence_routine(std::size_t header_sz);
+  std::uintptr_t align_up(std::uintptr_t x, std::size_t size);
+
+public:
+  static constexpr std::size_t span_size{64 * 1024};
+  static constexpr std::uint32_t SUPER_BLOCK_MAGIC{0x5B10C000};
   struct SuperBlockHeader {
     uint32_t class_id;
     uint32_t span_size;
     uint32_t slot_size;
     uint32_t n_slot;
+    std::uint32_t super_block_magic;
     std::atomic<std::uint32_t> free_count;
     std::uintptr_t payload_ptr;
   };
-  std::size_t SLOT_SIZE{16};
   SuperBlockHeader *super_block_header;
-  std::size_t bitmap_size_convergence_routine(std::size_t header_sz);
-  std::uintptr_t align_up(std::uintptr_t x, std::size_t size);
-
-public:
   inline static std::size_t get_super_block_size() { return span_size; };
   std::size_t get_slot_size();
   SuperBlock(uint32_t class_id, ExtentManager &extent_manager,

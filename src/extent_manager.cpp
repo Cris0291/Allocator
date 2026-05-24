@@ -75,13 +75,10 @@ void *ExtentManager::alloc_extent(std::size_t size) {
 }
 
 void *ExtentManager::alloc_extent_aligned(std::size_t size) {
-  std::size_t size_node{size + sizeof(ExtentHeader) + ALIGNED_BASE};
+  std::size_t size_node{size + sizeof(ExtentHeader) + ALIGNED_BASE - 1};
   Entry *entry{find_node(size_node)};
   if (!entry)
     return nullptr;
-
-  std::uintptr_t base_total{entry->base};
-  std::size_t size_total{entry->size};
 
   std::uintptr_t aligned_base{
       align_up(entry->base + sizeof(ExtentHeader), ALIGNED_BASE)};
@@ -91,10 +88,6 @@ void *ExtentManager::alloc_extent_aligned(std::size_t size) {
 
   void *base{ExtentManager::include_header(aligned_base_header, size)};
 
-  // in this case i am going to consider that all the frees are going
-  // to do pointer arithmetic to obtain the extent header
-  // so if there is not enough space in teh suffix just leave it there
-  // although it might increase internal fragmentation
   if (prefix == 0 && suffix == 0) {
     erase(entry->base);
     free_pool_node(entry);
