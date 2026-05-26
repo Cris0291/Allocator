@@ -5,6 +5,19 @@
 
 TCache::TCache() : alloc_route(get_alloc_route()){};
 
+TCache::~TCache() {
+  FreeNode *node{nullptr};
+  for (int i{}; i < NUM_CLASSES; i++) {
+    while (buckets[i]) {
+      node = buckets[i];
+      buckets[i] = node->next;
+      node->next = nullptr;
+      alloc_route->free_thread_route(reinterpret_cast<void *>(node));
+      count[i]--;
+    }
+  }
+};
+
 int TCache::find(std::size_t size) {
   auto it{std::lower_bound(std::begin(map_info), std::end(map_info), size,
                            [](MapSizeAlignment &map_item, std::size_t sz) {
@@ -46,6 +59,7 @@ void *TCache::allocate(std::size_t size) {
     buket_list->next = nullptr;
     return reinterpret_cast<void *>(buket_list);
   } else {
+    // also here we must refill not one but many chunks at once
     void *raw{alloc_route->alloc_thread_route(idx, map_info[idx].size)};
     return raw;
   }

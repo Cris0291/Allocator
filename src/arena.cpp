@@ -253,7 +253,8 @@ void Arena::set_bytes_freed_super_block(std::size_t size) {
   arena_stats->bytes_free.fetch_add(size, std::memory_order_release);
 }
 
-Arena::Arena(std::uint32_t id, std::uint32_t core, std::uint32_t flags_config) {
+void Arena::alloc_arena_chunk(std::uint32_t id, std::uint32_t core,
+                              std::uint32_t flags_config) {
   std::size_t arena_bytes{default_arena_size * 1024};
   os_api::MemSpan mem_info;
 
@@ -271,6 +272,10 @@ Arena::Arena(std::uint32_t id, std::uint32_t core, std::uint32_t flags_config) {
   init_super_block_pool();
   init_super_block_classes();
   init_lock_free_stack();
+};
+
+Arena::Arena(std::uint32_t id, std::uint32_t core, std::uint32_t flags_config) {
+  alloc_arena_chunk(id, core, flags_config);
 };
 void *Arena::alloc(std::size_t id, std::size_t size) {
   // Given the current work done in tcache initially i would be expecting and

@@ -18,6 +18,7 @@ private:
 
 public:
   TCache();
+  ~TCache();
   void *allocate(std::size_t size);
   void free(void *raw);
 };

@@ -61,6 +61,12 @@ private:
     ExtentManager::Entry entry_pool[64];
   };
   ArenaHeader *base;
+  struct ArenaChunk {
+    ArenaHeader *header;
+    ExtentManager *extent_manager;
+    ArenaChunk *next;
+  };
+  ArenaChunk *chunk_header{nullptr};
   static std::uintptr_t align_up(std::uintptr_t x, std::size_t size);
   static ArenaHeader *init_header(void *base, std::uint32_t id,
                                   std::uint32_t core,
@@ -87,6 +93,8 @@ private:
   void set_bytes_allocated(std::size_t size, bool is_extent);
   void set_bytes_freed_extent(void *ptr);
   void set_bytes_freed_super_block(std::size_t size);
+  void alloc_arena_chunk(std::uint32_t id, std::uint32_t core,
+                         std::uint32_t flags_config);
 
 public:
   Arena(std::uint32_t id, std::uint32_t core, std::uint32_t flags_config);
