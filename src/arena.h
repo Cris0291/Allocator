@@ -30,6 +30,7 @@ private:
     std::uintptr_t extent_manager_offset;
     std::uintptr_t extent_manager_pool_offset;
     std::uintptr_t lock_free_stack_offset;
+    std::uintptr_t arena_chunk_offset;
     std::uintptr_t usable_region_offset;
     void *arena_base;
   };
@@ -66,23 +67,25 @@ private:
     ExtentManager *extent_manager;
     ArenaChunk *next;
   };
-  ArenaChunk *chunk_header{nullptr};
+  ArenaChunk *header{nullptr};
   static std::uintptr_t align_up(std::uintptr_t x, std::size_t size);
   static ArenaHeader *init_header(void *base, std::uint32_t id,
                                   std::uint32_t core,
                                   std::uint32_t flags_config);
   static void init_arena_stats(ArenaHeader *header);
-  void init_extent_manager(ArenaHeader *header);
+  ExtentManager *init_extent_manager(ArenaHeader *header);
   void init_super_block_pool();
   void init_super_block_classes();
   void init_super_block_health();
   void init_lock_free_stack();
+  ArenaChunk *init_arena_chunk(void *base);
   void *get_arena_stats();
   void *get_super_block_pool();
   void *get_super_block_health_address();
   void *get_super_block_classes();
   void *get_extent_manager_pool();
   void *get_lock_free_stack();
+  void *get_arena_chunk(void *base);
   bool has_arena_space(ArenaStats *arena_stats);
   bool has_super_block_space(ArenaStats *arena_stats);
   SuperBlock *alloc_super_block(std::size_t id);
@@ -93,8 +96,9 @@ private:
   void set_bytes_allocated(std::size_t size, bool is_extent);
   void set_bytes_freed_extent(void *ptr);
   void set_bytes_freed_super_block(std::size_t size);
-  void alloc_arena_chunk(std::uint32_t id, std::uint32_t core,
-                         std::uint32_t flags_config);
+  ArenaChunk *alloc_arena_chunk(std::uint32_t id, std::uint32_t core,
+                                std::uint32_t flags_config);
+  void set_arena_chunk_header(ArenaChunk *arena_chunk);
 
 public:
   Arena(std::uint32_t id, std::uint32_t core, std::uint32_t flags_config);

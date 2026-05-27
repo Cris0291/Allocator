@@ -1,4 +1,5 @@
 #include "arena.h"
+#include "extent_manager.h"
 
 std::uintptr_t Arena::align_up(std::uintptr_t x, std::size_t size) {
   return (x + (size - 1)) & ~(size - 1);
@@ -21,8 +22,8 @@ Arena::ArenaHeader *Arena::init_header(void *base, std::uint32_t id,
 
   // Offset   Size   Description
   //-----    ----   -----------
-  // 0         96    ArenaHeader(64 bit)
-  // 96        32    Padding for the next cache line
+  // 0         104    ArenaHeader(64 bit)
+  // 104       24    Padding for the next cache line
   // 128       64    ArenaStats
   // 192       64    SuperBlockHealth
   // 256       192   SuperBlockPool
@@ -30,7 +31,8 @@ Arena::ArenaHeader *Arena::init_header(void *base, std::uint32_t id,
   // 592       40    ExtentManager
   // 632      3072   Extent manager pool
   // 3704      8     Lock free stack
-  // 3710     386         Padding to usable memory
+  // 3710     24     ArenaChunk
+  // 3734     362    Padding to usable memory
   // 4096
   arena_base->arena_stats_offset = header_alignup_offset;
   arena_base->super_block_health_offset =
@@ -45,6 +47,8 @@ Arena::ArenaHeader *Arena::init_header(void *base, std::uint32_t id,
       arena_base->extent_manager_offset + sizeof(ExtentManager);
   arena_base->lock_free_stack_offset =
       arena_base->extent_manager_pool_offset + sizeof(LockFreeStack);
+  arena_base->arena_chunk_offset =
+      arena_base->lock_free_stack_offset + sizeof(ArenaChunk);
 
   arena_base->usable_region_offset =
       align_up(arena_base->lock_free_stack_offset, 4096);
@@ -68,7 +72,7 @@ void Arena::init_arena_stats(ArenaHeader *header) {
   arena_stats->bytes_wasted.store(0, std::memory_order_release);
 };
 
-void Arena::init_extent_manager(ArenaHeader *header) {
+ExtentManager *Arena::init_extent_manager(ArenaHeader *header) {
   void *extent_manager_addr = reinterpret_cast<void *>(
       reinterpret_cast<std::uintptr_t>(header->arena_base) +
       header->extent_manager_offset);
@@ -83,6 +87,7 @@ void Arena::init_extent_manager(ArenaHeader *header) {
 
   extent_manager = new (extent_manager_addr)
       ExtentManager(pool_base, pool_size, usable_base, usable_size);
+  return extent_manager;
 };
 
 void Arena::init_super_block_pool() {
@@ -103,6 +108,12 @@ void Arena::init_super_block_health() {
 void Arena::init_lock_free_stack() {
   void *lock_free_stack_addr{get_lock_free_stack()};
   new (lock_free_stack_addr) LockFreeStack();
+};
+
+Arena::ArenaChunk *Arena::init_arena_chunk(void *base) {
+  void *arena_chunk_addr{get_arena_chunk(base)};
+  ArenaChunk *arena_chunk{new (arena_chunk_addr) ArenaChunk()};
+  return arena_chunk;
 };
 
 void *Arena::get_arena_stats() {
@@ -139,6 +150,11 @@ void *Arena::get_lock_free_stack() {
   return reinterpret_cast<void *>(
       reinterpret_cast<std::uintptr_t>(base->arena_base) +
       base->lock_free_stack_offset);
+};
+
+void *Arena::get_arena_chunk(void *b) {
+  return reinterpret_cast<void *>(reinterpret_cast<std::uintptr_t>(b) +
+                                  base->arena_chunk_offset);
 };
 
 bool Arena::has_arena_space(ArenaStats *arena_stats) {
@@ -253,8 +269,9 @@ void Arena::set_bytes_freed_super_block(std::size_t size) {
   arena_stats->bytes_free.fetch_add(size, std::memory_order_release);
 }
 
-void Arena::alloc_arena_chunk(std::uint32_t id, std::uint32_t core,
-                              std::uint32_t flags_config) {
+Arena::ArenaChunk *Arena::alloc_arena_chunk(std::uint32_t id,
+                                            std::uint32_t core,
+                                            std::uint32_t flags_config) {
   std::size_t arena_bytes{default_arena_size * 1024};
   os_api::MemSpan mem_info;
 
@@ -265,17 +282,31 @@ void Arena::alloc_arena_chunk(std::uint32_t id, std::uint32_t core,
   os_api::commit_memory(base, 4096);
 
   ArenaHeader *arena_base = init_header(base, id, core, flags_config);
-  this->base = arena_base;
+  ArenaChunk *arena_chunk{init_arena_chunk(arena_base->arena_base)};
+  arena_chunk->header = arena_base;
   init_arena_stats(arena_base);
-  init_extent_manager(arena_base);
+  ExtentManager *extent_manager{init_extent_manager(arena_base)};
   init_super_block_health();
   init_super_block_pool();
   init_super_block_classes();
   init_lock_free_stack();
+  arena_chunk->extent_manager = extent_manager;
+  arena_chunk->next = nullptr;
+  return arena_chunk;
+};
+
+void Arena::set_arena_chunk_header(ArenaChunk *arena_chunk) {
+  if (!header) {
+    header = arena_chunk;
+  } else {
+    arena_chunk->next = header;
+    header = arena_chunk;
+  }
 };
 
 Arena::Arena(std::uint32_t id, std::uint32_t core, std::uint32_t flags_config) {
-  alloc_arena_chunk(id, core, flags_config);
+  ArenaChunk *arena_chunk{alloc_arena_chunk(id, core, flags_config)};
+  set_arena_chunk_header(arena_chunk);
 };
 void *Arena::alloc(std::size_t id, std::size_t size) {
   // Given the current work done in tcache initially i would be expecting and
