@@ -67,35 +67,38 @@ private:
     ExtentManager *extent_manager;
     ArenaChunk *next;
   };
-  ArenaChunk *header{nullptr};
+  ArenaChunk *head{nullptr};
   static std::uintptr_t align_up(std::uintptr_t x, std::size_t size);
   static ArenaHeader *init_header(void *base, std::uint32_t id,
                                   std::uint32_t core,
                                   std::uint32_t flags_config);
   static void init_arena_stats(ArenaHeader *header);
   ExtentManager *init_extent_manager(ArenaHeader *header);
-  void init_super_block_pool();
-  void init_super_block_classes();
-  void init_super_block_health();
-  void init_lock_free_stack();
-  ArenaChunk *init_arena_chunk(void *base);
-  void *get_arena_stats();
-  void *get_super_block_pool();
-  void *get_super_block_health_address();
-  void *get_super_block_classes();
-  void *get_extent_manager_pool();
-  void *get_lock_free_stack();
-  void *get_arena_chunk(void *base);
+  void init_super_block_pool(ArenaHeader *header);
+  void init_super_block_classes(ArenaHeader *header);
+  void init_super_block_health(ArenaHeader *header);
+  void init_lock_free_stack(ArenaHeader *header);
+  ArenaChunk *init_arena_chunk(ArenaHeader *header);
+  void *get_arena_stats(ArenaHeader *header);
+  void *get_super_block_pool(ArenaHeader *header);
+  void *get_super_block_health_address(ArenaHeader *header);
+  void *get_super_block_classes(ArenaHeader *header);
+  void *get_extent_manager_pool(ArenaHeader *header);
+  void *get_lock_free_stack(ArenaHeader *header);
+  void *get_arena_chunk(ArenaHeader *header);
   bool has_arena_space(ArenaStats *arena_stats);
   bool has_super_block_space(ArenaStats *arena_stats);
-  SuperBlock *alloc_super_block(std::size_t id);
-  SuperBlock *find_super_block(std::uintptr_t ptr);
-  SuperBlock *get_super_block_class_or_null(std::size_t id);
-  ArenaStats *get_arena_stats_pointer();
-  LockFreeStack *get_lock_free_stack_pointer();
-  void set_bytes_allocated(std::size_t size, bool is_extent);
-  void set_bytes_freed_extent(void *ptr);
-  void set_bytes_freed_super_block(std::size_t size);
+  SuperBlock *alloc_super_block(std::size_t id, ArenaHeader *header,
+                                ExtentManager *extent_manager);
+  SuperBlock *find_super_block(std::uintptr_t ptr, ArenaHeader *header);
+  SuperBlock *get_super_block_class_or_null(std::size_t id,
+                                            ArenaHeader *header);
+  ArenaStats *get_arena_stats_pointer(ArenaHeader *header);
+  LockFreeStack *get_lock_free_stack_pointer(ArenaHeader *header);
+  void set_bytes_allocated(std::size_t size, bool is_extent,
+                           ArenaHeader *header);
+  void set_bytes_freed_extent(void *ptr, ArenaHeader *header);
+  void set_bytes_freed_super_block(std::size_t size, ArenaHeader *header);
   ArenaChunk *alloc_arena_chunk(std::uint32_t id, std::uint32_t core,
                                 std::uint32_t flags_config);
   void set_arena_chunk_header(ArenaChunk *arena_chunk);
@@ -105,5 +108,5 @@ public:
   void *alloc(std::size_t id, std::size_t size);
   bool free(void *ptr);
   void free_remote(void *ptr);
-  bool is_range_arena(std::uintptr_t ptr);
+  bool is_range_arena(std::uintptr_t ptr, ArenaHeader *header);
 };
