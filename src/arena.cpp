@@ -5,9 +5,9 @@ std::uintptr_t Arena::align_up(std::uintptr_t x, std::size_t size) {
   return (x + (size - 1)) & ~(size - 1);
 };
 
-Arena::ArenaHeader *Arena::init_header(void *base, std::uint32_t id,
-                                       std::uint32_t core,
-                                       std::uint32_t flags_config) {
+Arena::ArenaHeader *Arena::init_arena_header(void *base, std::uint32_t id,
+                                             std::uint32_t core,
+                                             std::uint32_t flags_config) {
   ArenaHeader *arena_base{reinterpret_cast<ArenaHeader *>(base)};
   arena_base->arena_id = id;
   arena_base->owner_core = core;
@@ -57,6 +57,55 @@ Arena::ArenaHeader *Arena::init_header(void *base, std::uint32_t id,
       (default_arena_size * 1024) - arena_base->usable_region_offset;
 
   return arena_base;
+};
+
+Arena::SuperBlockHeader *
+Arena::init_super_block_header(void *super_block_chunk_base, std::uint32_t id) {
+  SuperBlockHeader *super_block_header{
+      reinterpret_cast<SuperBlockHeader *>(super_block_chunk_base)};
+  super_block_header->super_block_header_id = id;
+
+  super_block_header->super_block_pool_offset = sizeof(SuperBlockHeader);
+  super_block_header->super_block_classes_offset =
+      super_block_header->super_block_pool_offset + sizeof(SuperBlockPool);
+  super_block_header->extent_manager_offset =
+      super_block_header->super_block_classes_offset +
+      sizeof(SuperBlockPoolClasses);
+  super_block_header->extent_manager_pool_offset =
+      super_block_header->extent_manager_offset + sizeof(ExtentManager);
+  super_block_header->super_block_chunk_offset =
+      super_block_header->extent_manager_pool_offset +
+      sizeof(ExtentManagerPool);
+
+  super_block_header->usable_region_offset =
+      align_up(super_block_header->super_block_chunk_offset, 4096);
+
+  super_block_header->total_usable_size =
+      (default_arena_size * 1024) - super_block_header->usable_region_offset;
+
+  return super_block_header;
+};
+
+Arena::MediumChunkHeader *
+Arena::init_middle_chunk_header(void *medium_chunk_base, std::uint32_t id) {
+  MediumChunkHeader *medium_chunk_header{
+      reinterpret_cast<MediumChunkHeader *>(medium_chunk_base)};
+  medium_chunk_header->medium_chunk_header_id = id;
+
+  medium_chunk_header->extent_manager_offset = sizeof(MediumChunkHeader);
+  medium_chunk_header->extent_manager_pool_offset =
+      medium_chunk_header->extent_manager_offset + sizeof(ExtentManager);
+  medium_chunk_header->medium_chunk_offset =
+      medium_chunk_header->extent_manager_pool_offset +
+      sizeof(ExtentManagerPool);
+
+  medium_chunk_header->usable_region_offset =
+      align_up(medium_chunk_header->medium_chunk_offset, 4096);
+
+  medium_chunk_header->total_usable_size =
+      (default_arena_size * 1024) - medium_chunk_header->usable_region_offset;
+
+  return medium_chunk_header;
 };
 
 void Arena::init_arena_stats(ArenaHeader *header) {

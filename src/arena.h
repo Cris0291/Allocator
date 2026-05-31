@@ -5,6 +5,7 @@
 #include "map_size.h"
 #include "os_api.h"
 #include "super_block.h"
+#include "tcache.h"
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -22,6 +23,8 @@ private:
     std::uint32_t flags;
     std::uint16_t arena_id;
     std::uint16_t owner_core;
+    std::uint32_t super_block_count;
+    std::uint32_t middle_chunk_count;
     std::uint64_t total_usable_size;
     std::uintptr_t arena_stats_offset;
     std::uintptr_t super_block_health_offset;
@@ -31,6 +34,26 @@ private:
     std::uintptr_t extent_manager_pool_offset;
     std::uintptr_t lock_free_stack_offset;
     std::uintptr_t arena_chunk_offset;
+    std::uintptr_t usable_region_offset;
+    void *arena_base;
+  };
+  struct SuperBlockHeader {
+    std::uint16_t super_block_header_id;
+    std::uint64_t total_usable_size;
+    std::uintptr_t super_block_pool_offset;
+    std::uintptr_t super_block_classes_offset;
+    std::uintptr_t extent_manager_offset;
+    std::uintptr_t extent_manager_pool_offset;
+    std::uintptr_t super_block_chunk_offset;
+    std::uintptr_t usable_region_offset;
+    void *arena_base;
+  };
+  struct MediumChunkHeader {
+    std::uint16_t medium_chunk_header_id;
+    std::uint64_t total_usable_size;
+    std::uintptr_t extent_manager_offset;
+    std::uintptr_t extent_manager_pool_offset;
+    std::uintptr_t medium_chunk_offset;
     std::uintptr_t usable_region_offset;
     void *arena_base;
   };
@@ -57,21 +80,24 @@ private:
   struct SuperBlockPoolClasses {
     SuperBlock *super_block_pool_classes[NUM_CLASSES]{};
   };
-  ExtentManager *extent_manager;
   struct ExtentManagerPool {
     ExtentManager::Entry entry_pool[64];
   };
-  ArenaHeader *base;
   struct ArenaChunk {
     ArenaHeader *header;
     ExtentManager *extent_manager;
     ArenaChunk *next;
   };
-  ArenaChunk *head{nullptr};
+  ArenaChunk *head_super_block{nullptr};
+  ArenaChunk *head_extend{nullptr};
   static std::uintptr_t align_up(std::uintptr_t x, std::size_t size);
-  static ArenaHeader *init_header(void *base, std::uint32_t id,
-                                  std::uint32_t core,
-                                  std::uint32_t flags_config);
+  static ArenaHeader *init_arena_header(void *base, std::uint32_t id,
+                                        std::uint32_t core,
+                                        std::uint32_t flags_config);
+  static SuperBlockHeader *init_super_block_header(void *super_block_chunk_base,
+                                                   std::uint32_t id);
+  static MediumChunkHeader *init_middle_chunk_header(void *medium_chunk_base,
+                                                     std::uint32_t id);
   static void init_arena_stats(ArenaHeader *header);
   ExtentManager *init_extent_manager(ArenaHeader *header);
   void init_super_block_pool(ArenaHeader *header);
