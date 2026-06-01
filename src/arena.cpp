@@ -1,5 +1,6 @@
 #include "arena.h"
 #include "extent_manager.h"
+#include <cstdint>
 
 std::uintptr_t Arena::align_up(std::uintptr_t x, std::size_t size) {
   return (x + (size - 1)) & ~(size - 1);
@@ -11,10 +12,13 @@ Arena::ArenaHeader *Arena::init_arena_header(void *base, std::uint32_t id,
   ArenaHeader *arena_base{reinterpret_cast<ArenaHeader *>(base)};
   arena_base->arena_id = id;
   arena_base->owner_core = core;
-  arena_base->arena_base = base;
   arena_base->flags = flags_config;
   arena_base->version = 1;
   arena_base->magic = 0xA17ECAFE;
+  arena_base->super_block_count = 0;
+  arena_base->middle_chunk_count = 0;
+  arena_base->total_usable_size = 0;
+  arena_base->arena_base = base;
 
   std::uintptr_t base_ptr{reinterpret_cast<std::uintptr_t>(base)};
   std::uintptr_t header_offset{sizeof(ArenaHeader)};
@@ -35,26 +39,15 @@ Arena::ArenaHeader *Arena::init_arena_header(void *base, std::uint32_t id,
   // 3734     362    Padding to usable memory
   // 4096
   arena_base->arena_stats_offset = header_alignup_offset;
-  arena_base->super_block_health_offset =
+  arena_base->super_block_active_offset =
       arena_base->arena_stats_offset + sizeof(ArenaStats);
-  arena_base->super_block_pool_offset =
-      arena_base->super_block_health_offset + sizeof(SuperBlockHealth);
-  arena_base->super_block_classes_offset =
-      arena_base->super_block_pool_offset + sizeof(SuperBlockPool);
-  arena_base->extent_manager_offset =
-      arena_base->super_block_classes_offset + sizeof(SuperBlockPoolClasses);
-  arena_base->extent_manager_pool_offset =
-      arena_base->extent_manager_offset + sizeof(ExtentManager);
+  arena_base->super_block_partial_offset =
+      arena_base->super_block_active_offset + sizeof(SuperBlockActiveList);
+  arena_base->super_block_full_offset =
+      arena_base->super_block_partial_offset + sizeof(SuperBlockFullList);
+
   arena_base->lock_free_stack_offset =
-      arena_base->extent_manager_pool_offset + sizeof(LockFreeStack);
-  arena_base->arena_chunk_offset =
-      arena_base->lock_free_stack_offset + sizeof(ArenaChunk);
-
-  arena_base->usable_region_offset =
-      align_up(arena_base->lock_free_stack_offset, 4096);
-
-  arena_base->total_usable_size =
-      (default_arena_size * 1024) - arena_base->usable_region_offset;
+      arena_base->super_block_full_offset + sizeof(SuperBlockFullList);
 
   return arena_base;
 };
@@ -86,8 +79,8 @@ Arena::init_super_block_header(void *super_block_chunk_base, std::uint32_t id) {
   return super_block_header;
 };
 
-Arena::MediumChunkHeader *
-Arena::init_middle_chunk_header(void *medium_chunk_base, std::uint32_t id) {
+Arena::MediumChunkHeader *Arena::init_medium_header(void *medium_chunk_base,
+                                                    std::uint32_t id) {
   MediumChunkHeader *medium_chunk_header{
       reinterpret_cast<MediumChunkHeader *>(medium_chunk_base)};
   medium_chunk_header->medium_chunk_header_id = id;
@@ -121,37 +114,34 @@ void Arena::init_arena_stats(ArenaHeader *header) {
   arena_stats->bytes_wasted.store(0, std::memory_order_release);
 };
 
-ExtentManager *Arena::init_extent_manager(ArenaHeader *header) {
+ExtentManager *
+Arena::init_extent_manager(void *base, std::uintptr_t extent_manager_offset,
+                           std::uintptr_t extent_manager_pool_offset,
+                           std::uintptr_t usable_region_offset,
+                           std::uint64_t total_usable_size) {
   void *extent_manager_addr = reinterpret_cast<void *>(
-      reinterpret_cast<std::uintptr_t>(header->arena_base) +
-      header->extent_manager_offset);
+      reinterpret_cast<std::uintptr_t>(base) + extent_manager_offset);
 
-  std::uintptr_t arena_base{
-      reinterpret_cast<std::uintptr_t>(header->arena_base)};
+  std::uintptr_t arena_base{reinterpret_cast<std::uintptr_t>(base)};
 
-  std::uintptr_t pool_base{arena_base + header->extent_manager_pool_offset};
+  std::uintptr_t pool_base{arena_base + extent_manager_pool_offset};
   std::size_t pool_size{sizeof(ExtentManagerPool)};
-  std::uintptr_t usable_base{arena_base + header->usable_region_offset};
-  std::size_t usable_size{header->total_usable_size};
+  std::uintptr_t usable_base{arena_base + usable_region_offset};
+  std::size_t usable_size{total_usable_size};
 
-  extent_manager = new (extent_manager_addr)
-      ExtentManager(pool_base, pool_size, usable_base, usable_size);
+  ExtentManager *extent_manager{new (extent_manager_addr) ExtentManager(
+      pool_base, pool_size, usable_base, usable_size)};
   return extent_manager;
 };
 
-void Arena::init_super_block_pool(ArenaHeader *header) {
+void Arena::init_super_block_pool(SuperBlockHeader *header) {
   void *super_block_pool_addr{get_super_block_pool(header)};
   new (super_block_pool_addr) SuperBlockPool();
 };
 
-void Arena::init_super_block_classes(ArenaHeader *header) {
+void Arena::init_super_block_classes(SuperBlockHeader *header) {
   void *super_block_classes_addr{get_super_block_classes(header)};
   new (super_block_classes_addr) SuperBlockPoolClasses();
-};
-
-void Arena::init_super_block_health(ArenaHeader *header) {
-  void *super_block_health_addr{get_super_block_health_address(header)};
-  new (super_block_health_addr) SuperBlockHealth();
 };
 
 void Arena::init_lock_free_stack(ArenaHeader *header) {
@@ -159,8 +149,8 @@ void Arena::init_lock_free_stack(ArenaHeader *header) {
   new (lock_free_stack_addr) LockFreeStack();
 };
 
-Arena::ArenaChunk *Arena::init_arena_chunk(ArenaHeader *header) {
-  void *arena_chunk_addr{get_arena_chunk(header)};
+Arena::ArenaChunk *Arena::init_chunk(void *base, std::uintptr_t chunk_offset) {
+  void *arena_chunk_addr{get_chunk(base, chunk_offset)};
   ArenaChunk *arena_chunk{new (arena_chunk_addr) ArenaChunk()};
   return arena_chunk;
 };
@@ -171,27 +161,21 @@ void *Arena::get_arena_stats(ArenaHeader *header) {
       header->arena_stats_offset);
 };
 
-void *Arena::get_super_block_pool(ArenaHeader *header) {
+void *Arena::get_super_block_pool(SuperBlockHeader *header) {
   return reinterpret_cast<void *>(
-      reinterpret_cast<std::uintptr_t>(header->arena_base) +
+      reinterpret_cast<std::uintptr_t>(header->base) +
       header->super_block_pool_offset);
 };
 
-void *Arena::get_super_block_health_address(ArenaHeader *header) {
+void *Arena::get_super_block_classes(SuperBlockHeader *header) {
   return reinterpret_cast<void *>(
-      reinterpret_cast<std::uintptr_t>(header->arena_base) +
-      header->super_block_health_offset);
-};
-
-void *Arena::get_super_block_classes(ArenaHeader *header) {
-  return reinterpret_cast<void *>(
-      reinterpret_cast<std::uintptr_t>(header->arena_base) +
+      reinterpret_cast<std::uintptr_t>(header->base) +
       header->super_block_classes_offset);
 };
 
-void *Arena::get_extent_manager_pool(ArenaHeader *header) {
+void *Arena::get_extent_manager_pool(MediumChunkHeader *header) {
   return reinterpret_cast<void *>(
-      reinterpret_cast<std::uintptr_t>(header->arena_base) +
+      reinterpret_cast<std::uintptr_t>(header->base) +
       header->extent_manager_pool_offset);
 };
 
@@ -201,19 +185,20 @@ void *Arena::get_lock_free_stack(ArenaHeader *header) {
       header->lock_free_stack_offset);
 };
 
-void *Arena::get_arena_chunk(ArenaHeader *header) {
-  return reinterpret_cast<void *>(
-      reinterpret_cast<std::uintptr_t>(header->arena_base) +
-      header->arena_chunk_offset);
+void *Arena::get_chunk(void *base, std::uintptr_t chunk_offset) {
+  return reinterpret_cast<void *>(reinterpret_cast<std::uintptr_t>(base) +
+                                  chunk_offset);
 };
 
-bool Arena::has_arena_space(ArenaStats *arena_stats) {
-  return base->total_usable_size >
+bool Arena::has_arena_space(ArenaStats *arena_stats,
+                            std::uint64_t total_usable_size) {
+  return total_usable_size >
          arena_stats->bytes_allocated.load(std::memory_order_acquire);
 };
 
-bool Arena::has_super_block_space(ArenaStats *arena_stats) {
-  return base->total_usable_size -
+bool Arena::has_super_block_space(ArenaStats *arena_stats,
+                                  std::uint64_t total_usable_size) {
+  return total_usable_size -
              arena_stats->bytes_allocated.load(std::memory_order_acquire) >=
          SuperBlock::get_super_block_size();
 }

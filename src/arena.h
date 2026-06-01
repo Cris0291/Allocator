@@ -27,14 +27,10 @@ private:
     std::uint32_t middle_chunk_count;
     std::uint64_t total_usable_size;
     std::uintptr_t arena_stats_offset;
-    std::uintptr_t super_block_health_offset;
-    std::uintptr_t super_block_pool_offset;
-    std::uintptr_t super_block_classes_offset;
-    std::uintptr_t extent_manager_offset;
-    std::uintptr_t extent_manager_pool_offset;
+    std::uintptr_t super_block_active_offset;
+    std::uintptr_t super_block_partial_offset;
+    std::uintptr_t super_block_full_offset;
     std::uintptr_t lock_free_stack_offset;
-    std::uintptr_t arena_chunk_offset;
-    std::uintptr_t usable_region_offset;
     void *arena_base;
   };
   struct SuperBlockHeader {
@@ -46,7 +42,7 @@ private:
     std::uintptr_t extent_manager_pool_offset;
     std::uintptr_t super_block_chunk_offset;
     std::uintptr_t usable_region_offset;
-    void *arena_base;
+    void *base;
   };
   struct MediumChunkHeader {
     std::uint16_t medium_chunk_header_id;
@@ -55,7 +51,7 @@ private:
     std::uintptr_t extent_manager_pool_offset;
     std::uintptr_t medium_chunk_offset;
     std::uintptr_t usable_region_offset;
-    void *arena_base;
+    void *base;
   };
   struct ArenaStats {
     std::atomic_uint_fast64_t alloc_count;
@@ -80,6 +76,15 @@ private:
   struct SuperBlockPoolClasses {
     SuperBlock *super_block_pool_classes[NUM_CLASSES]{};
   };
+  struct SuperBlockActiveList {
+    SuperBlock *active[NUM_CLASSES]{};
+  };
+  struct SuperBlockPartialLists {
+    SuperBlock *partial[NUM_CLASSES];
+  };
+  struct SuperBlockFullList {
+    SuperBlock *full[NUM_CLASSES];
+  };
   struct ExtentManagerPool {
     ExtentManager::Entry entry_pool[64];
   };
@@ -96,24 +101,28 @@ private:
                                         std::uint32_t flags_config);
   static SuperBlockHeader *init_super_block_header(void *super_block_chunk_base,
                                                    std::uint32_t id);
-  static MediumChunkHeader *init_middle_chunk_header(void *medium_chunk_base,
-                                                     std::uint32_t id);
+  static MediumChunkHeader *init_medium_header(void *medium_chunk_base,
+                                               std::uint32_t id);
   static void init_arena_stats(ArenaHeader *header);
-  ExtentManager *init_extent_manager(ArenaHeader *header);
-  void init_super_block_pool(ArenaHeader *header);
-  void init_super_block_classes(ArenaHeader *header);
-  void init_super_block_health(ArenaHeader *header);
+  ExtentManager *init_extent_manager(void *base,
+                                     std::uintptr_t extent_manager_offset,
+                                     std::uintptr_t extent_manager_pool_offset,
+                                     std::uintptr_t usable_region_offset,
+                                     std::uint64_t total_usable_size);
+  void init_super_block_pool(SuperBlockHeader *header);
+  void init_super_block_classes(SuperBlockHeader *header);
   void init_lock_free_stack(ArenaHeader *header);
-  ArenaChunk *init_arena_chunk(ArenaHeader *header);
+  ArenaChunk *init_chunk(void *base, std::uintptr_t chunk_offset);
   void *get_arena_stats(ArenaHeader *header);
-  void *get_super_block_pool(ArenaHeader *header);
-  void *get_super_block_health_address(ArenaHeader *header);
-  void *get_super_block_classes(ArenaHeader *header);
-  void *get_extent_manager_pool(ArenaHeader *header);
+  void *get_super_block_pool(SuperBlockHeader *header);
+  void *get_super_block_classes(SuperBlockHeader *header);
+  void *get_extent_manager_pool(MediumChunkHeader *header);
   void *get_lock_free_stack(ArenaHeader *header);
-  void *get_arena_chunk(ArenaHeader *header);
-  bool has_arena_space(ArenaStats *arena_stats);
-  bool has_super_block_space(ArenaStats *arena_stats);
+  void *get_chunk(void *base, std::uintptr_t chunk_offset);
+  bool has_arena_space(ArenaStats *arena_stats,
+                       std::uint64_t total_usable_size);
+  bool has_super_block_space(ArenaStats *arena_stats,
+                             std::uint64_t total_usable_size);
   SuperBlock *alloc_super_block(std::size_t id, ArenaHeader *header,
                                 ExtentManager *extent_manager);
   SuperBlock *find_super_block(std::uintptr_t ptr, ArenaHeader *header);
