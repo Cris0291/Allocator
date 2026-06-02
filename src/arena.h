@@ -93,8 +93,9 @@ private:
     ExtentManager *extent_manager;
     ArenaChunk *next;
   };
+  ArenaHeader *arena_header;
   ArenaChunk *head_super_block{nullptr};
-  ArenaChunk *head_extend{nullptr};
+  ArenaChunk *head_medium_chunk{nullptr};
   static std::uintptr_t align_up(std::uintptr_t x, std::size_t size);
   static ArenaHeader *init_arena_header(void *base, std::uint32_t id,
                                         std::uint32_t core,
@@ -134,9 +135,13 @@ private:
                            ArenaHeader *header);
   void set_bytes_freed_extent(void *ptr, ArenaHeader *header);
   void set_bytes_freed_super_block(std::size_t size, ArenaHeader *header);
-  ArenaChunk *alloc_arena_chunk(std::uint32_t id, std::uint32_t core,
-                                std::uint32_t flags_config);
-  void set_arena_chunk_header(ArenaChunk *arena_chunk);
+  void alloc_arena_header(std::uint32_t id, std::uint32_t core,
+                          std::uint32_t flags_config);
+  void alloc_super_block_chunk();
+  void alloc_medium_chunk();
+  void set_super_block_chunk_head(ArenaChunk *arena_chunk);
+  void set_medium_chunk_head(ArenaChunk *arena_chunk);
+  void *init_memory(std::size_t size, std::size_t commit_size);
 
 public:
   Arena(std::uint32_t id, std::uint32_t core, std::uint32_t flags_config);

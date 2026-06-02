@@ -1,5 +1,6 @@
 #include "arena.h"
 #include "extent_manager.h"
+#include <cstddef>
 #include <cstdint>
 
 std::uintptr_t Arena::align_up(std::uintptr_t x, std::size_t size) {
@@ -307,44 +308,65 @@ void Arena::set_bytes_freed_super_block(std::size_t size, ArenaHeader *header) {
   arena_stats->bytes_free.fetch_add(size, std::memory_order_release);
 }
 
-Arena::ArenaChunk *Arena::alloc_arena_chunk(std::uint32_t id,
-                                            std::uint32_t core,
-                                            std::uint32_t flags_config) {
-  std::size_t arena_bytes{default_arena_size * 1024};
+void *Arena::init_memory(std::size_t size, std::size_t commit_size) {
+  std::size_t arena_bytes{size};
   os_api::MemSpan mem_info;
-
   os_api::reserve_address_space(arena_bytes, os_api::PAGE_SIZE, mem_info);
-
   void *base{mem_info.addr};
-
-  os_api::commit_memory(base, 4096);
-
-  ArenaHeader *arena_base = init_header(base, id, core, flags_config);
-  ArenaChunk *arena_chunk{init_arena_chunk(arena_base)};
-  arena_chunk->header = arena_base;
-  init_arena_stats(arena_base);
-  ExtentManager *extent_manager{init_extent_manager(arena_base)};
-  init_super_block_health(arena_base);
-  init_super_block_pool(arena_base);
-  init_super_block_classes(arena_base);
-  init_lock_free_stack(arena_base);
-  arena_chunk->extent_manager = extent_manager;
-  arena_chunk->next = nullptr;
-  return arena_chunk;
+  os_api::commit_memory(base, commit_size);
 };
 
-void Arena::set_arena_chunk_header(ArenaChunk *arena_chunk) {
-  if (!head) {
-    head = arena_chunk;
+void Arena::alloc_arena_header(std::uint32_t id, std::uint32_t core,
+                               std::uint32_t flags_config) {
+  void *base{init_memory(os_api::PAGE_SIZE, os_api::PAGE_SIZE)};
+
+  ArenaHeader *arena_base = init_arena_header(base, id, core, flags_config);
+  init_arena_stats(arena_base);
+  init_lock_free_stack(arena_base);
+  arena_header = arena_base;
+};
+
+void Arena::set_super_block_chunk_head(ArenaChunk *arena_chunk) {
+  if (!head_super_block) {
+    head_super_block = arena_chunk;
   } else {
-    arena_chunk->next = head;
-    head = arena_chunk;
+    arena_chunk->next = head_super_block;
+    head_super_block = arena_chunk;
   }
 };
 
+void Arena::set_medium_chunk_head(ArenaChunk *arena_chunk) {
+  if (!head_medium_chunk) {
+    head_medium_chunk = arena_chunk;
+  } else {
+    arena_chunk->next = head_medium_chunk;
+    head_medium_chunk = arena_chunk;
+  }
+};
+
+void Arena::alloc_super_block_chunk() {
+  void *base{init_memory(default_arena_size * 1024, os_api::PAGE_SIZE)};
+  SuperBlockHeader *super_block_header{
+      init_super_block_header(base, arena_header->super_block_count)};
+  arena_header->super_block_count += 1;
+  init_extent_manager(base, super_block_header->extent_manager_offset,
+                      super_block_header->extent_manager_pool_offset,
+                      super_block_header->usable_region_offset,
+                      super_block_header->total_usable_size);
+  init_super_block_pool(super_block_header);
+  init_super_block_classes(super_block_header);
+  ArenaChunk *super_block_chunk{
+      init_chunk(base, super_block_header->super_block_chunk_offset)};
+  set_super_block_chunk_head(super_block_chunk);
+};
+
+void Arena::alloc_medium_chunk() {
+  void *base{init_memory(default_arena_size * 1024, os_api::PAGE_SIZE)};
+};
+
 Arena::Arena(std::uint32_t id, std::uint32_t core, std::uint32_t flags_config) {
-  ArenaChunk *arena_chunk{alloc_arena_chunk(id, core, flags_config)};
-  set_arena_chunk_header(arena_chunk);
+  alloc_arena_header(id, core, flags_config);
+  alloc_super_block_chunk();
 };
 void *Arena::alloc(std::size_t id, std::size_t size) {
   // Given the current work done in tcache initially i would be expecting and
