@@ -58,6 +58,7 @@ Arena::init_super_block_header(void *super_block_chunk_base, std::uint32_t id) {
   SuperBlockHeader *super_block_header{
       reinterpret_cast<SuperBlockHeader *>(super_block_chunk_base)};
   super_block_header->super_block_header_id = id;
+  super_block_header->total_used_size = 0;
 
   super_block_header->super_block_pool_offset = sizeof(SuperBlockHeader);
   super_block_header->super_block_classes_offset =
@@ -85,6 +86,7 @@ Arena::MediumChunkHeader *Arena::init_medium_header(void *medium_chunk_base,
   MediumChunkHeader *medium_chunk_header{
       reinterpret_cast<MediumChunkHeader *>(medium_chunk_base)};
   medium_chunk_header->medium_chunk_header_id = id;
+  medium_chunk_header->total_used_size = 0;
 
   medium_chunk_header->extent_manager_offset = sizeof(MediumChunkHeader);
   medium_chunk_header->extent_manager_pool_offset =
@@ -150,9 +152,17 @@ void Arena::init_lock_free_stack(ArenaHeader *header) {
   new (lock_free_stack_addr) LockFreeStack();
 };
 
-Arena::ArenaChunk *Arena::init_chunk(void *base, std::uintptr_t chunk_offset) {
+Arena::SuperBlockChunk *
+Arena::init_super_block_chunk(void *base, std::uintptr_t chunk_offset) {
   void *arena_chunk_addr{get_chunk(base, chunk_offset)};
-  ArenaChunk *arena_chunk{new (arena_chunk_addr) ArenaChunk()};
+  SuperBlockChunk *arena_chunk{new (arena_chunk_addr) SuperBlockChunk()};
+  return arena_chunk;
+};
+
+Arena::MediumChunk *Arena::init_medium_chunk(void *base,
+                                             std::uintptr_t chunk_offset) {
+  void *arena_chunk_addr{get_chunk(base, chunk_offset)};
+  MediumChunk *arena_chunk{new (arena_chunk_addr) MediumChunk()};
   return arena_chunk;
 };
 
@@ -326,7 +336,7 @@ void Arena::alloc_arena_header(std::uint32_t id, std::uint32_t core,
   arena_header = arena_base;
 };
 
-void Arena::set_super_block_chunk_head(ArenaChunk *arena_chunk) {
+void Arena::set_super_block_chunk_head(SuperBlockChunk *arena_chunk) {
   if (!head_super_block) {
     head_super_block = arena_chunk;
   } else {
@@ -335,7 +345,7 @@ void Arena::set_super_block_chunk_head(ArenaChunk *arena_chunk) {
   }
 };
 
-void Arena::set_medium_chunk_head(ArenaChunk *arena_chunk) {
+void Arena::set_medium_chunk_head(MediumChunk *arena_chunk) {
   if (!head_medium_chunk) {
     head_medium_chunk = arena_chunk;
   } else {
@@ -349,32 +359,55 @@ void Arena::alloc_super_block_chunk() {
   SuperBlockHeader *super_block_header{
       init_super_block_header(base, arena_header->super_block_count)};
   arena_header->super_block_count += 1;
-  init_extent_manager(base, super_block_header->extent_manager_offset,
+  init_extent_manager(super_block_header->base,
+                      super_block_header->extent_manager_offset,
                       super_block_header->extent_manager_pool_offset,
                       super_block_header->usable_region_offset,
                       super_block_header->total_usable_size);
   init_super_block_pool(super_block_header);
   init_super_block_classes(super_block_header);
-  ArenaChunk *super_block_chunk{
-      init_chunk(base, super_block_header->super_block_chunk_offset)};
+  SuperBlockChunk *super_block_chunk{init_super_block_chunk(
+      super_block_header->base, super_block_header->super_block_chunk_offset)};
   set_super_block_chunk_head(super_block_chunk);
 };
 
 void Arena::alloc_medium_chunk() {
   void *base{init_memory(default_arena_size * 1024, os_api::PAGE_SIZE)};
+  MediumChunkHeader *medium_chunk_header{
+      init_medium_header(base, arena_header->middle_chunk_count)};
+  arena_header->middle_chunk_count++;
+  init_extent_manager(medium_chunk_header->base,
+                      medium_chunk_header->extent_manager_offset,
+                      medium_chunk_header->extent_manager_pool_offset,
+                      medium_chunk_header->usable_region_offset,
+                      medium_chunk_header->total_usable_size);
+  MediumChunk *medium_chunk{init_medium_chunk(
+      medium_chunk_header->base, medium_chunk_header->medium_chunk_offset)};
+  set_medium_chunk_head(medium_chunk);
 };
 
 Arena::Arena(std::uint32_t id, std::uint32_t core, std::uint32_t flags_config) {
   alloc_arena_header(id, core, flags_config);
   alloc_super_block_chunk();
+  alloc_medium_chunk();
 };
+void *Arena::find_medium_chunk() {
+  if (!head_medium_chunk) {
+    alloc_medium_chunk();
+  }
+  MediumChunk *temp{head_medium_chunk};
+  while (temp) {
+    temp->header
+  }
+};
+
 void *Arena::alloc(std::size_t id, std::size_t size) {
   // Given the current work done in tcache initially i would be expecting and
   // idx matching the already 17 classes
   // i will work later in the paths that involve alignment and a size bigger
   // also if tcache needs a rework or additional path i will do it later for
   // now assume a simple id matchen a class
-  LockFreeStack *lock_free_stack{get_lock_free_stack_pointer(head->header)};
+  LockFreeStack *lock_free_stack{get_lock_free_stack_pointer(arena_header)};
   LockFreeStack::node *lock_node{lock_free_stack->pop()};
   while (lock_node) {
     LockFreeStack::node *next = lock_node->next;

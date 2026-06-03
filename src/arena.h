@@ -35,6 +35,7 @@ private:
   };
   struct SuperBlockHeader {
     std::uint16_t super_block_header_id;
+    std::uint64_t total_used_size;
     std::uint64_t total_usable_size;
     std::uintptr_t super_block_pool_offset;
     std::uintptr_t super_block_classes_offset;
@@ -46,6 +47,7 @@ private:
   };
   struct MediumChunkHeader {
     std::uint16_t medium_chunk_header_id;
+    std::uint64_t total_used_size;
     std::uint64_t total_usable_size;
     std::uintptr_t extent_manager_offset;
     std::uintptr_t extent_manager_pool_offset;
@@ -88,14 +90,19 @@ private:
   struct ExtentManagerPool {
     ExtentManager::Entry entry_pool[64];
   };
-  struct ArenaChunk {
-    ArenaHeader *header;
+  struct SuperBlockChunk {
+    SuperBlockHeader *header;
     ExtentManager *extent_manager;
-    ArenaChunk *next;
+    SuperBlockChunk *next;
+  };
+  struct MediumChunk {
+    MediumChunkHeader *header;
+    ExtentManager *extent_manager;
+    MediumChunk *next;
   };
   ArenaHeader *arena_header;
-  ArenaChunk *head_super_block{nullptr};
-  ArenaChunk *head_medium_chunk{nullptr};
+  SuperBlockChunk *head_super_block{nullptr};
+  MediumChunk *head_medium_chunk{nullptr};
   static std::uintptr_t align_up(std::uintptr_t x, std::size_t size);
   static ArenaHeader *init_arena_header(void *base, std::uint32_t id,
                                         std::uint32_t core,
@@ -113,7 +120,9 @@ private:
   void init_super_block_pool(SuperBlockHeader *header);
   void init_super_block_classes(SuperBlockHeader *header);
   void init_lock_free_stack(ArenaHeader *header);
-  ArenaChunk *init_chunk(void *base, std::uintptr_t chunk_offset);
+  SuperBlockChunk *init_super_block_chunk(void *base,
+                                          std::uintptr_t chunk_offset);
+  MediumChunk *init_medium_chunk(void *base, std::uintptr_t chunk_offset);
   void *get_arena_stats(ArenaHeader *header);
   void *get_super_block_pool(SuperBlockHeader *header);
   void *get_super_block_classes(SuperBlockHeader *header);
@@ -139,9 +148,10 @@ private:
                           std::uint32_t flags_config);
   void alloc_super_block_chunk();
   void alloc_medium_chunk();
-  void set_super_block_chunk_head(ArenaChunk *arena_chunk);
-  void set_medium_chunk_head(ArenaChunk *arena_chunk);
+  void set_super_block_chunk_head(SuperBlockChunk *arena_chunk);
+  void set_medium_chunk_head(MediumChunk *arena_chunk);
   void *init_memory(std::size_t size, std::size_t commit_size);
+  void *find_medium_chunk();
 
 public:
   Arena(std::uint32_t id, std::uint32_t core, std::uint32_t flags_config);
