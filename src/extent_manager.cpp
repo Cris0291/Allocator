@@ -50,14 +50,14 @@ ExtentManager::Entry *ExtentManager::find_node(std::size_t size_node) {
   return entry;
 };
 
-void *ExtentManager::alloc_extent(std::size_t size) {
+void *ExtentManager::alloc_extent(std::size_t size, std::uintptr_t base_chunk) {
   std::size_t size_node{size + sizeof(ExtentHeader)};
   Entry *entry{find_node(size_node)};
   if (!entry)
     return nullptr;
 
   if (entry->size == size_node) {
-    void *base{ExtentManager::include_header(entry->base, size)};
+    void *base{ExtentManager::include_header(entry->base, size, base_chunk)};
     erase(entry->base);
     free_pool_node(entry);
     return base;
@@ -67,7 +67,7 @@ void *ExtentManager::alloc_extent(std::size_t size) {
     std::size_t remaining_size{entry->size - size_node};
     entry->size = remaining_size;
     entry->base = new_base;
-    void *base{ExtentManager::include_header(allocated_addr, size)};
+    void *base{ExtentManager::include_header(allocated_addr, size, base_chunk)};
     return base;
   }
 
@@ -75,18 +75,14 @@ void *ExtentManager::alloc_extent(std::size_t size) {
 }
 
 void *ExtentManager::alloc_extent_aligned(std::size_t size) {
-  std::size_t size_node{size + sizeof(ExtentHeader) + ALIGNED_BASE - 1};
+  std::size_t size_node{size + ALIGNED_BASE - 1};
   Entry *entry{find_node(size_node)};
   if (!entry)
     return nullptr;
 
-  std::uintptr_t aligned_base{
-      align_up(entry->base + sizeof(ExtentHeader), ALIGNED_BASE)};
-  std::uintptr_t aligned_base_header{aligned_base - sizeof(ExtentHeader)};
-  std::uintptr_t prefix{aligned_base_header - entry->base};
+  std::uintptr_t aligned_base{align_up(entry->base, ALIGNED_BASE)};
+  std::uintptr_t prefix{aligned_base - entry->base};
   std::uintptr_t suffix{(entry->base + entry->size) - (aligned_base + size)};
-
-  void *base{ExtentManager::include_header(aligned_base_header, size)};
 
   if (prefix == 0 && suffix == 0) {
     erase(entry->base);
@@ -101,7 +97,7 @@ void *ExtentManager::alloc_extent_aligned(std::size_t size) {
     insert_new_node(aligned_base + size, suffix);
   }
 
-  return base;
+  return reinterpret_cast<void *>(aligned_base);
 };
 
 void ExtentManager::free_extent(void *base_header) {

@@ -391,14 +391,28 @@ Arena::Arena(std::uint32_t id, std::uint32_t core, std::uint32_t flags_config) {
   alloc_super_block_chunk();
   alloc_medium_chunk();
 };
-void *Arena::find_medium_chunk() {
+void *Arena::find_medium_chunk(std::size_t size) {
+  void *raw;
   if (!head_medium_chunk) {
     alloc_medium_chunk();
   }
   MediumChunk *temp{head_medium_chunk};
   while (temp) {
-    temp->header
+    if ((temp->header->total_used_size + size) >
+        temp->header->total_usable_size) {
+      temp = temp->next;
+      continue;
+    }
+
+    raw = temp->extent_manager->alloc_extent(size);
+    temp->header->total_used_size += size;
+    return raw;
   }
+
+  alloc_medium_chunk();
+  raw = head_medium_chunk->extent_manager->alloc_extent(size);
+  head_medium_chunk->header->total_used_size += size;
+  return raw;
 };
 
 void *Arena::alloc(std::size_t id, std::size_t size) {
@@ -418,9 +432,8 @@ void *Arena::alloc(std::size_t id, std::size_t size) {
 
   void *raw;
   if (size >= MAX_CLASS_SIZE) {
-    raw = head->extent_manager->alloc_extent(size);
-    if (raw)
-      set_bytes_allocated(size, true, head->header);
+    raw = find_medium_chunk(size);
+    set_bytes_allocated(size, true, arena_header);
     return raw;
   }
   SuperBlock *super_block{get_super_block_class_or_null(id, head->header)};

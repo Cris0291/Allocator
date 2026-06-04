@@ -23,6 +23,7 @@ private:
 
   struct ExtentHeader {
     std::size_t size;
+    std::uintptr_t base;
   };
 
   inline static Entry *entry_of(RBNode *rb_node) {
@@ -40,12 +41,14 @@ private:
   };
 
   inline static void *include_header(std::uintptr_t base_header,
-                                     std::size_t size) {
+                                     std::size_t size,
+                                     std::uintptr_t base_chunk) {
 
     std::uintptr_t base{base_header + sizeof(ExtentHeader)};
     ExtentHeader *extent_header{new (reinterpret_cast<void *>(base_header))
                                     ExtentHeader{}};
     extent_header->size = size;
+    extent_header->base = base_chunk;
     return reinterpret_cast<void *>(base);
   };
 
@@ -61,7 +64,7 @@ public:
   static constexpr std::size_t HEADER_SIZE{sizeof(ExtentHeader)};
   ExtentManager(std::uintptr_t pool_base, std::size_t pool_size,
                 std::uintptr_t usable_base, std::size_t usable_size);
-  void *alloc_extent(std::size_t size);
+  void *alloc_extent(std::size_t size, std::uintptr_t base_chunk);
 
   void *alloc_extent_aligned(std::size_t size);
 

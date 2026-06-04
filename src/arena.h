@@ -91,14 +91,14 @@ private:
     ExtentManager::Entry entry_pool[64];
   };
   struct SuperBlockChunk {
-    SuperBlockHeader *header;
-    ExtentManager *extent_manager;
-    SuperBlockChunk *next;
+    SuperBlockHeader *header{nullptr};
+    ExtentManager *extent_manager{nullptr};
+    SuperBlockChunk *next{nullptr};
   };
   struct MediumChunk {
-    MediumChunkHeader *header;
-    ExtentManager *extent_manager;
-    MediumChunk *next;
+    MediumChunkHeader *header{nullptr};
+    ExtentManager *extent_manager{nullptr};
+    MediumChunk *next{nullptr};
   };
   ArenaHeader *arena_header;
   SuperBlockChunk *head_super_block{nullptr};
@@ -151,7 +151,7 @@ private:
   void set_super_block_chunk_head(SuperBlockChunk *arena_chunk);
   void set_medium_chunk_head(MediumChunk *arena_chunk);
   void *init_memory(std::size_t size, std::size_t commit_size);
-  void *find_medium_chunk();
+  void *find_medium_chunk(std::size_t size);
 
 public:
   Arena(std::uint32_t id, std::uint32_t core, std::uint32_t flags_config);
