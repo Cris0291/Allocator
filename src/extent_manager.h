@@ -10,7 +10,7 @@ public:
     std::uintptr_t base;
     std::size_t size;
     RBNode rb;
-    Entry *next_free;
+    Entry *next_free{nullptr};
   };
 
 private:

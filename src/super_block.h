@@ -32,6 +32,7 @@ public:
     std::uintptr_t payload_ptr;
   };
   SuperBlockHeader *super_block_header;
+  SuperBlock *next{nullptr};
   inline static std::size_t get_super_block_size() { return span_size; };
   std::size_t get_slot_size();
   SuperBlock(uint32_t class_id, ExtentManager &extent_manager,

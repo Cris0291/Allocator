@@ -17,6 +17,9 @@ private:
   static constexpr std::size_t NUM_CLASSES{17};
   // Size of arena is 256 but allocated an extra page for header and metadata
   static constexpr std::size_t default_arena_size{260};
+  struct SuperBlockList {
+    SuperBlock *list[NUM_CLASSES]{};
+  };
   struct ArenaHeader {
     std::uint32_t version;
     std::uint32_t magic;
@@ -31,6 +34,9 @@ private:
     std::uintptr_t super_block_partial_offset;
     std::uintptr_t super_block_full_offset;
     std::uintptr_t lock_free_stack_offset;
+    SuperBlockList *active;
+    SuperBlockList *partial;
+    SuperBlockList *full;
     void *arena_base;
   };
   struct SuperBlockHeader {
@@ -78,15 +84,6 @@ private:
   struct SuperBlockPoolClasses {
     SuperBlock *super_block_pool_classes[NUM_CLASSES]{};
   };
-  struct SuperBlockActiveList {
-    SuperBlock *active[NUM_CLASSES]{};
-  };
-  struct SuperBlockPartialLists {
-    SuperBlock *partial[NUM_CLASSES];
-  };
-  struct SuperBlockFullList {
-    SuperBlock *full[NUM_CLASSES];
-  };
   struct ExtentManagerPool {
     ExtentManager::Entry entry_pool[64];
   };
@@ -119,6 +116,7 @@ private:
                                      std::uint64_t total_usable_size);
   void init_super_block_pool(SuperBlockHeader *header);
   void init_super_block_classes(SuperBlockHeader *header);
+  SuperBlockList *init_super_block_list(void *base, std::uintptr_t list_offset);
   void init_lock_free_stack(ArenaHeader *header);
   SuperBlockChunk *init_super_block_chunk(void *base,
                                           std::uintptr_t chunk_offset);
@@ -126,6 +124,7 @@ private:
   void *get_arena_stats(ArenaHeader *header);
   void *get_super_block_pool(SuperBlockHeader *header);
   void *get_super_block_classes(SuperBlockHeader *header);
+  void *get_super_block_list(void *base, std::uintptr_t list_offset);
   void *get_extent_manager_pool(MediumChunkHeader *header);
   void *get_lock_free_stack(ArenaHeader *header);
   void *get_chunk(void *base, std::uintptr_t chunk_offset);

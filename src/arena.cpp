@@ -1,5 +1,6 @@
 #include "arena.h"
 #include "extent_manager.h"
+#include "super_block.h"
 #include <cstddef>
 #include <cstdint>
 
@@ -164,6 +165,18 @@ Arena::MediumChunk *Arena::init_medium_chunk(void *base,
   void *arena_chunk_addr{get_chunk(base, chunk_offset)};
   MediumChunk *arena_chunk{new (arena_chunk_addr) MediumChunk()};
   return arena_chunk;
+};
+
+Arena::SuperBlockList *
+Arena::init_super_block_list(void *base, std::uintptr_t list_offset) {
+  void *super_block_list_addr{get_super_block_list(base, list_offset)};
+  SuperBlockList *super_block_list{new (super_block_list_addr)
+                                       SuperBlockList()};
+};
+
+void *Arena::get_super_block_list(void *base, std::uintptr_t list_offset) {
+  return reinterpret_cast<void *>(reinterpret_cast<std::uintptr_t>(base) +
+                                  list_offset);
 };
 
 void *Arena::get_arena_stats(ArenaHeader *header) {
@@ -333,6 +346,14 @@ void Arena::alloc_arena_header(std::uint32_t id, std::uint32_t core,
   ArenaHeader *arena_base = init_arena_header(base, id, core, flags_config);
   init_arena_stats(arena_base);
   init_lock_free_stack(arena_base);
+  SuperBlockList *active_list{init_super_block_list(
+      arena_base->arena_base, arena_base->super_block_active_offset)};
+  arena_base->active = active_list;
+  SuperBlockList *partial_list{init_super_block_list(
+      arena_base->arena_base, arena_base->super_block_partial_offset)};
+  SuperBlockList *full_list{init_super_block_list(
+      arena_base->arena_base, arena_base->super_block_full_offset)};
+  arena_base->full = full_list;
   arena_header = arena_base;
 };
 
@@ -404,13 +425,15 @@ void *Arena::find_medium_chunk(std::size_t size) {
       continue;
     }
 
-    raw = temp->extent_manager->alloc_extent(size);
+    raw = temp->extent_manager->alloc_extent(
+        size, reinterpret_cast<std::uintptr_t>(temp->header->base));
     temp->header->total_used_size += size;
     return raw;
   }
 
   alloc_medium_chunk();
-  raw = head_medium_chunk->extent_manager->alloc_extent(size);
+  raw = head_medium_chunk->extent_manager->alloc_extent(
+      size, reinterpret_cast<std::uintptr_t>(head_medium_chunk->header->base));
   head_medium_chunk->header->total_used_size += size;
   return raw;
 };
@@ -436,14 +459,22 @@ void *Arena::alloc(std::size_t id, std::size_t size) {
     set_bytes_allocated(size, true, arena_header);
     return raw;
   }
-  SuperBlock *super_block{get_super_block_class_or_null(id, head->header)};
+  SuperBlock *super_block{arena_header->active->list[id]};
+  if (!super_block->is_full()) {
+    raw = super_block->allocate_atomic_span(0);
+    set_bytes_allocated(size, false, arena_header);
+    return raw;
+  }
+  super_block->next = arena_header->full->list[id];
+  arena_header->full->list[id] = super_block;
+
   if (super_block && !super_block->is_full()) {
     // i dont know what to do with the hint or where should that come from
     // also this is retuning just  a slot a chunk of the requesten memory
     // should i retun a batch for the tcache if so i need to rethink alloc
     // from the super block
     raw = super_block->allocate_atomic_span(0);
-    set_bytes_allocated(size, false, head->header);
+    set_bytes_allocated(size, false, arena_header);
     return raw;
   }
   ArenaStats *arena_stats{
