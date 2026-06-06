@@ -23,7 +23,7 @@ private:
 
   struct ExtentHeader {
     std::size_t size;
-    std::uintptr_t base;
+    std::uintptr_t base_medium_chunk_header;
   };
 
   inline static Entry *entry_of(RBNode *rb_node) {
@@ -42,13 +42,13 @@ private:
 
   inline static void *include_header(std::uintptr_t base_header,
                                      std::size_t size,
-                                     std::uintptr_t base_chunk) {
+                                     std::uintptr_t medium_chunk_header) {
 
     std::uintptr_t base{base_header + sizeof(ExtentHeader)};
     ExtentHeader *extent_header{new (reinterpret_cast<void *>(base_header))
                                     ExtentHeader{}};
     extent_header->size = size;
-    extent_header->base = base_chunk;
+    extent_header->base_medium_chunk_header = medium_chunk_header;
     return reinterpret_cast<void *>(base);
   };
 
@@ -79,5 +79,12 @@ public:
     ExtentHeader *header{
         reinterpret_cast<ExtentHeader *>(ptr_addr - sizeof(ExtentHeader))};
     return header->size;
+  }
+
+  inline static std::uintptr_t get_own_header(void *base_header) {
+    std::uintptr_t base_addr{reinterpret_cast<std::uintptr_t>(base_header)};
+    ExtentHeader *header{
+        reinterpret_cast<ExtentHeader *>(base_addr - sizeof(ExtentHeader))};
+    return header->base_medium_chunk_header;
   }
 };

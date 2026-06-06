@@ -30,6 +30,7 @@ public:
     std::uint32_t super_block_magic;
     std::atomic<std::uint32_t> free_count;
     std::uintptr_t payload_ptr;
+    SuperBlock *super_block;
   };
   SuperBlockHeader *super_block_header;
   SuperBlock *next{nullptr};
@@ -44,4 +45,5 @@ public:
   uint32_t free_count();
   void release();
   bool is_range(std::uintptr_t ptr);
+  void set_own_pointer();
 };

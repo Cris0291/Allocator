@@ -257,6 +257,7 @@ SuperBlock *Arena::alloc_super_block(std::size_t id, SuperBlockHeader *header,
         SuperBlock(id, *extent_manager, map_info[id].size);
     super_block_pool_classes->super_block_pool_classes[id] = super_block;
     super_block_pool->occupied[i] = true;
+    super_block->set_own_pointer();
     header->total_used_size += SuperBlock::get_super_block_size();
     break;
   }
@@ -436,14 +437,14 @@ void *Arena::find_medium_chunk(std::size_t size) {
     }
 
     raw = temp->extent_manager->alloc_extent(
-        size, reinterpret_cast<std::uintptr_t>(temp->header->base));
+        size, reinterpret_cast<std::uintptr_t>(temp->header));
     temp->header->total_used_size += size + sizeof(ExtentManager::HEADER_SIZE);
     return raw;
   }
 
   alloc_medium_chunk();
   raw = head_medium_chunk->extent_manager->alloc_extent(
-      size, reinterpret_cast<std::uintptr_t>(head_medium_chunk->header->base));
+      size, reinterpret_cast<std::uintptr_t>(head_medium_chunk->header));
   head_medium_chunk->header->total_used_size +=
       size + sizeof(ExtentManager::HEADER_SIZE);
   return raw;
@@ -505,25 +506,31 @@ void *Arena::alloc(std::size_t id, std::size_t size) {
 };
 
 bool Arena::free(void *ptr) {
-  // Here i need to make a distinction between memory managed by the
-  // superblock and memory managed fron the extend purely since some requests
-  // might exceed the max chuk size of teh block
-  std::uintptr_t ptr_addr{reinterpret_cast<std::uintptr_t>(ptr)};
+  std::uintptr_t addr{reinterpret_cast<std::uintptr_t>(ptr)};
+  std::uintptr_t super_block_base{addr & ~(SuperBlock::span_size - 1)};
 
-  if (!is_range_arena(ptr_addr, head->header))
-    return false;
+  SuperBlock::SuperBlockHeader *super_block_header{
+      reinterpret_cast<SuperBlock::SuperBlockHeader *>(super_block_base)};
 
-  SuperBlock *super_block{find_super_block(ptr_addr, head->header)};
-
-  if (super_block) {
-    set_bytes_freed_super_block(super_block->get_slot_size(), head->header);
-    super_block->free_atomic_span(ptr);
+  if (super_block_header->super_block_magic == SuperBlock::SUPER_BLOCK_MAGIC) {
+    super_block_header->super_block->free_atomic_span(ptr);
+    set_bytes_freed_super_block(
+        super_block_header->super_block->get_slot_size(), arena_header);
     return true;
   }
 
-  void *base_header{ExtentManager::get_base_header(ptr_addr)};
-  set_bytes_freed_extent(ptr, head->header);
-  head->extent_manager->free_extent(base_header);
+  void *base_header{ExtentManager::get_base_header(addr)};
+  std::size_t size{ExtentManager::get_header_size(ptr)};
+  std::uintptr_t medium_chunk_header{
+      ExtentManager::get_own_header(base_header)};
+  MediumChunkHeader *header{
+      reinterpret_cast<MediumChunkHeader *>(medium_chunk_header)};
+  header->total_used_size -= size;
+  ExtentManager *extent_manager{reinterpret_cast<ExtentManager *>(
+      reinterpret_cast<std::uintptr_t>(header->base) +
+      header->extent_manager_offset)};
+  extent_manager->free_extent(ptr);
+  set_bytes_freed_extent(ptr, arena_header);
 
   return true;
 };

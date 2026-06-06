@@ -129,3 +129,5 @@ bool SuperBlock::is_range(std::uintptr_t ptr) {
 }
 
 std::size_t SuperBlock::get_slot_size() { return SLOT_SIZE; }
+
+void SuperBlock::set_own_pointer() { super_block_header->super_block = this; }
