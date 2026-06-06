@@ -3,6 +3,7 @@
 #include "super_block.h"
 #include <cstddef>
 #include <cstdint>
+#include <new>
 
 std::uintptr_t Arena::align_up(std::uintptr_t x, std::size_t size) {
   return (x + (size - 1)) & ~(size - 1);
@@ -19,7 +20,6 @@ Arena::ArenaHeader *Arena::init_arena_header(void *base, std::uint32_t id,
   arena_base->magic = 0xA17ECAFE;
   arena_base->super_block_count = 0;
   arena_base->middle_chunk_count = 0;
-  arena_base->total_usable_size = 0;
   arena_base->arena_base = base;
 
   std::uintptr_t base_ptr{reinterpret_cast<std::uintptr_t>(base)};
@@ -44,12 +44,12 @@ Arena::ArenaHeader *Arena::init_arena_header(void *base, std::uint32_t id,
   arena_base->super_block_active_offset =
       arena_base->arena_stats_offset + sizeof(ArenaStats);
   arena_base->super_block_partial_offset =
-      arena_base->super_block_active_offset + sizeof(SuperBlockActiveList);
+      arena_base->super_block_active_offset + sizeof(SuperBlockList);
   arena_base->super_block_full_offset =
-      arena_base->super_block_partial_offset + sizeof(SuperBlockFullList);
+      arena_base->super_block_partial_offset + sizeof(SuperBlockList);
 
   arena_base->lock_free_stack_offset =
-      arena_base->super_block_full_offset + sizeof(SuperBlockFullList);
+      arena_base->super_block_full_offset + sizeof(SuperBlockList);
 
   return arena_base;
 };
@@ -227,7 +227,7 @@ bool Arena::has_super_block_space(ArenaStats *arena_stats,
          SuperBlock::get_super_block_size();
 }
 
-SuperBlock *Arena::alloc_super_block(std::size_t id, ArenaHeader *header,
+SuperBlock *Arena::alloc_super_block(std::size_t id, SuperBlockHeader *header,
                                      ExtentManager *extent_manager) {
   // Have doubst in here
   // flow should be load super_block_health_addr->superblocks_active
@@ -257,9 +257,7 @@ SuperBlock *Arena::alloc_super_block(std::size_t id, ArenaHeader *header,
         SuperBlock(id, *extent_manager, map_info[id].size);
     super_block_pool_classes->super_block_pool_classes[id] = super_block;
     super_block_pool->occupied[i] = true;
-    ArenaStats *stats{reinterpret_cast<ArenaStats *>(get_arena_stats(header))};
-    stats->bytes_allocated.fetch_add(SuperBlock::get_super_block_size(),
-                                     std::memory_order_release);
+    header->total_used_size += SuperBlock::get_super_block_size();
     break;
   }
 
@@ -375,6 +373,20 @@ void Arena::set_medium_chunk_head(MediumChunk *arena_chunk) {
   }
 };
 
+void *Arena::super_block_allocation_path(SuperBlock *super_block,
+                                         std::size_t id, std::size_t size) {
+  super_block = alloc_super_block(id, head_super_block->header,
+                                  head_super_block->extent_manager);
+  if (!super_block) {
+    // if this path is taekn it means i did something very wrong and that my
+    // meth have failed me
+    throw std::bad_alloc();
+  }
+  void *raw{super_block->allocate_atomic_span(0)};
+  set_bytes_allocated(size, false, arena_header);
+  return raw;
+};
+
 void Arena::alloc_super_block_chunk() {
   void *base{init_memory(default_arena_size * 1024, os_api::PAGE_SIZE)};
   SuperBlockHeader *super_block_header{
@@ -414,9 +426,7 @@ Arena::Arena(std::uint32_t id, std::uint32_t core, std::uint32_t flags_config) {
 };
 void *Arena::find_medium_chunk(std::size_t size) {
   void *raw;
-  if (!head_medium_chunk) {
-    alloc_medium_chunk();
-  }
+
   MediumChunk *temp{head_medium_chunk};
   while (temp) {
     if ((temp->header->total_used_size + size) >
@@ -427,23 +437,20 @@ void *Arena::find_medium_chunk(std::size_t size) {
 
     raw = temp->extent_manager->alloc_extent(
         size, reinterpret_cast<std::uintptr_t>(temp->header->base));
-    temp->header->total_used_size += size;
+    temp->header->total_used_size += size + sizeof(ExtentManager::HEADER_SIZE);
     return raw;
   }
 
   alloc_medium_chunk();
   raw = head_medium_chunk->extent_manager->alloc_extent(
       size, reinterpret_cast<std::uintptr_t>(head_medium_chunk->header->base));
-  head_medium_chunk->header->total_used_size += size;
+  head_medium_chunk->header->total_used_size +=
+      size + sizeof(ExtentManager::HEADER_SIZE);
   return raw;
 };
 
 void *Arena::alloc(std::size_t id, std::size_t size) {
-  // Given the current work done in tcache initially i would be expecting and
-  // idx matching the already 17 classes
-  // i will work later in the paths that involve alignment and a size bigger
-  // also if tcache needs a rework or additional path i will do it later for
-  // now assume a simple id matchen a class
+
   LockFreeStack *lock_free_stack{get_lock_free_stack_pointer(arena_header)};
   LockFreeStack::node *lock_node{lock_free_stack->pop()};
   while (lock_node) {
@@ -460,38 +467,40 @@ void *Arena::alloc(std::size_t id, std::size_t size) {
     return raw;
   }
   SuperBlock *super_block{arena_header->active->list[id]};
-  if (!super_block->is_full()) {
-    raw = super_block->allocate_atomic_span(0);
-    set_bytes_allocated(size, false, arena_header);
-    return raw;
-  }
-  super_block->next = arena_header->full->list[id];
-  arena_header->full->list[id] = super_block;
-
   if (super_block && !super_block->is_full()) {
-    // i dont know what to do with the hint or where should that come from
-    // also this is retuning just  a slot a chunk of the requesten memory
-    // should i retun a batch for the tcache if so i need to rethink alloc
-    // from the super block
     raw = super_block->allocate_atomic_span(0);
     set_bytes_allocated(size, false, arena_header);
     return raw;
   }
-  ArenaStats *arena_stats{
-      reinterpret_cast<ArenaStats *>(get_arena_stats(head->header))};
-  bool has_space{has_arena_space(arena_stats)};
 
-  if (!has_space)
-    return nullptr;
+  if (super_block->is_full()) {
+    super_block->next = arena_header->full->list[id];
+    arena_header->full->list[id] = super_block;
+    arena_header->active->list[id] = nullptr;
+  }
 
-  if (!has_super_block_space(arena_stats))
-    return nullptr;
+  super_block = arena_header->partial->list[id];
+  if (super_block) {
+    if (super_block->next) {
+      arena_header->partial->list[id] = super_block->next;
+      super_block->next = nullptr;
+    }
+    arena_header->active->list[id] = super_block;
+    raw = super_block->allocate_atomic_span(0);
+    set_bytes_allocated(size, false, arena_header);
+    return raw;
+  }
 
-  super_block = alloc_super_block(id, head->header, head->extent_manager);
-  if (!super_block)
-    return nullptr;
-  raw = super_block->allocate_atomic_span(0);
-  set_bytes_allocated(size, false, head->header);
+  if (head_super_block->header->total_usable_size -
+          head_super_block->header->total_used_size >=
+      SuperBlock::get_super_block_size()) {
+    raw = super_block_allocation_path(super_block, id, size);
+    arena_header->active->list[id] = super_block;
+    return raw;
+  }
+  alloc_super_block_chunk();
+  raw = super_block_allocation_path(super_block, id, size);
+  arena_header->active->list[id] = super_block;
   return raw;
 };
 

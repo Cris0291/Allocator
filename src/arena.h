@@ -28,7 +28,6 @@ private:
     std::uint16_t owner_core;
     std::uint32_t super_block_count;
     std::uint32_t middle_chunk_count;
-    std::uint64_t total_usable_size;
     std::uintptr_t arena_stats_offset;
     std::uintptr_t super_block_active_offset;
     std::uintptr_t super_block_partial_offset;
@@ -132,7 +131,7 @@ private:
                        std::uint64_t total_usable_size);
   bool has_super_block_space(ArenaStats *arena_stats,
                              std::uint64_t total_usable_size);
-  SuperBlock *alloc_super_block(std::size_t id, ArenaHeader *header,
+  SuperBlock *alloc_super_block(std::size_t id, SuperBlockHeader *header,
                                 ExtentManager *extent_manager);
   SuperBlock *find_super_block(std::uintptr_t ptr, ArenaHeader *header);
   SuperBlock *get_super_block_class_or_null(std::size_t id,
@@ -151,6 +150,8 @@ private:
   void set_medium_chunk_head(MediumChunk *arena_chunk);
   void *init_memory(std::size_t size, std::size_t commit_size);
   void *find_medium_chunk(std::size_t size);
+  void *super_block_allocation_path(SuperBlock *super_block, std::size_t id,
+                                    std::size_t size);
 
 public:
   Arena(std::uint32_t id, std::uint32_t core, std::uint32_t flags_config);
