@@ -31,13 +31,14 @@ public:
     std::atomic<std::uint32_t> free_count;
     std::uintptr_t payload_ptr;
     SuperBlock *super_block;
+    std::uint32_t core;
   };
   SuperBlockHeader *super_block_header;
   SuperBlock *next{nullptr};
   inline static std::size_t get_super_block_size() { return span_size; };
   std::size_t get_slot_size();
   SuperBlock(uint32_t class_id, ExtentManager &extent_manager,
-             std::size_t slot_size);
+             std::size_t slot_size, std::uint32_t core);
   void *allocate_atomic_span(std::size_t hint_word);
   void free_atomic_span(void *payload);
   bool is_full();

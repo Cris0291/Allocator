@@ -55,11 +55,14 @@ Arena::ArenaHeader *Arena::init_arena_header(void *base, std::uint32_t id,
 };
 
 Arena::SuperBlockHeader *
-Arena::init_super_block_header(void *super_block_chunk_base, std::uint32_t id) {
+Arena::init_super_block_header(void *super_block_chunk_base, std::uint32_t id,
+                               std::uint32_t core) {
   SuperBlockHeader *super_block_header{
       reinterpret_cast<SuperBlockHeader *>(super_block_chunk_base)};
   super_block_header->super_block_header_id = id;
   super_block_header->total_used_size = 0;
+  super_block_header->base = super_block_chunk_base;
+  super_block_header->owner_core = core;
 
   super_block_header->super_block_pool_offset = sizeof(SuperBlockHeader);
   super_block_header->super_block_classes_offset =
@@ -83,11 +86,14 @@ Arena::init_super_block_header(void *super_block_chunk_base, std::uint32_t id) {
 };
 
 Arena::MediumChunkHeader *Arena::init_medium_header(void *medium_chunk_base,
-                                                    std::uint32_t id) {
+                                                    std::uint32_t id,
+                                                    std::uint32_t core) {
   MediumChunkHeader *medium_chunk_header{
       reinterpret_cast<MediumChunkHeader *>(medium_chunk_base)};
   medium_chunk_header->medium_chunk_header_id = id;
   medium_chunk_header->total_used_size = 0;
+  medium_chunk_header->base = medium_chunk_base;
+  medium_chunk_header->owner_core = core;
 
   medium_chunk_header->extent_manager_offset = sizeof(MediumChunkHeader);
   medium_chunk_header->extent_manager_pool_offset =
@@ -172,6 +178,7 @@ Arena::init_super_block_list(void *base, std::uintptr_t list_offset) {
   void *super_block_list_addr{get_super_block_list(base, list_offset)};
   SuperBlockList *super_block_list{new (super_block_list_addr)
                                        SuperBlockList()};
+  return super_block_list;
 };
 
 void *Arena::get_super_block_list(void *base, std::uintptr_t list_offset) {
@@ -254,7 +261,7 @@ SuperBlock *Arena::alloc_super_block(std::size_t id, SuperBlockHeader *header,
     void *super_block_addr{
         reinterpret_cast<void *>(super_block_pool->storage[i])};
     super_block = new (super_block_addr)
-        SuperBlock(id, *extent_manager, map_info[id].size);
+        SuperBlock(id, *extent_manager, map_info[id].size, header->owner_core);
     super_block_pool_classes->super_block_pool_classes[id] = super_block;
     super_block_pool->occupied[i] = true;
     super_block->set_own_pointer();
@@ -336,6 +343,7 @@ void *Arena::init_memory(std::size_t size, std::size_t commit_size) {
   os_api::reserve_address_space(arena_bytes, os_api::PAGE_SIZE, mem_info);
   void *base{mem_info.addr};
   os_api::commit_memory(base, commit_size);
+  return base;
 };
 
 void Arena::alloc_arena_header(std::uint32_t id, std::uint32_t core,
@@ -350,6 +358,7 @@ void Arena::alloc_arena_header(std::uint32_t id, std::uint32_t core,
   arena_base->active = active_list;
   SuperBlockList *partial_list{init_super_block_list(
       arena_base->arena_base, arena_base->super_block_partial_offset)};
+  arena_base->partial = partial_list;
   SuperBlockList *full_list{init_super_block_list(
       arena_base->arena_base, arena_base->super_block_full_offset)};
   arena_base->full = full_list;
@@ -374,7 +383,7 @@ void Arena::set_medium_chunk_head(MediumChunk *arena_chunk) {
   }
 };
 
-void *Arena::super_block_allocation_path(SuperBlock *super_block,
+void *Arena::super_block_allocation_path(SuperBlock *&super_block,
                                          std::size_t id, std::size_t size) {
   super_block = alloc_super_block(id, head_super_block->header,
                                   head_super_block->extent_manager);
@@ -390,8 +399,8 @@ void *Arena::super_block_allocation_path(SuperBlock *super_block,
 
 void Arena::alloc_super_block_chunk() {
   void *base{init_memory(default_arena_size * 1024, os_api::PAGE_SIZE)};
-  SuperBlockHeader *super_block_header{
-      init_super_block_header(base, arena_header->super_block_count)};
+  SuperBlockHeader *super_block_header{init_super_block_header(
+      base, arena_header->super_block_count, arena_header->owner_core)};
   arena_header->super_block_count += 1;
   init_extent_manager(super_block_header->base,
                       super_block_header->extent_manager_offset,
@@ -407,8 +416,8 @@ void Arena::alloc_super_block_chunk() {
 
 void Arena::alloc_medium_chunk() {
   void *base{init_memory(default_arena_size * 1024, os_api::PAGE_SIZE)};
-  MediumChunkHeader *medium_chunk_header{
-      init_medium_header(base, arena_header->middle_chunk_count)};
+  MediumChunkHeader *medium_chunk_header{init_medium_header(
+      base, arena_header->middle_chunk_count, arena_header->owner_core)};
   arena_header->middle_chunk_count++;
   init_extent_manager(medium_chunk_header->base,
                       medium_chunk_header->extent_manager_offset,
@@ -438,7 +447,7 @@ void *Arena::find_medium_chunk(std::size_t size) {
 
     raw = temp->extent_manager->alloc_extent(
         size, reinterpret_cast<std::uintptr_t>(temp->header));
-    temp->header->total_used_size += size + sizeof(ExtentManager::HEADER_SIZE);
+    temp->header->total_used_size += size + ExtentManager::HEADER_SIZE;
     return raw;
   }
 
@@ -446,7 +455,7 @@ void *Arena::find_medium_chunk(std::size_t size) {
   raw = head_medium_chunk->extent_manager->alloc_extent(
       size, reinterpret_cast<std::uintptr_t>(head_medium_chunk->header));
   head_medium_chunk->header->total_used_size +=
-      size + sizeof(ExtentManager::HEADER_SIZE);
+      size + ExtentManager::HEADER_SIZE;
   return raw;
 };
 
@@ -474,7 +483,7 @@ void *Arena::alloc(std::size_t id, std::size_t size) {
     return raw;
   }
 
-  if (super_block->is_full()) {
+  if (super_block && super_block->is_full()) {
     super_block->next = arena_header->full->list[id];
     arena_header->full->list[id] = super_block;
     arena_header->active->list[id] = nullptr;
@@ -482,10 +491,8 @@ void *Arena::alloc(std::size_t id, std::size_t size) {
 
   super_block = arena_header->partial->list[id];
   if (super_block) {
-    if (super_block->next) {
-      arena_header->partial->list[id] = super_block->next;
-      super_block->next = nullptr;
-    }
+    arena_header->partial->list[id] = super_block->next;
+    super_block->next = nullptr;
     arena_header->active->list[id] = super_block;
     raw = super_block->allocate_atomic_span(0);
     set_bytes_allocated(size, false, arena_header);
@@ -529,7 +536,7 @@ bool Arena::free(void *ptr) {
   ExtentManager *extent_manager{reinterpret_cast<ExtentManager *>(
       reinterpret_cast<std::uintptr_t>(header->base) +
       header->extent_manager_offset)};
-  extent_manager->free_extent(ptr);
+  extent_manager->free_extent(base_header);
   set_bytes_freed_extent(ptr, arena_header);
 
   return true;

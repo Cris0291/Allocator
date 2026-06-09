@@ -18,7 +18,7 @@ std::uintptr_t align_up(std::uintptr_t x, std::size_t size) {
 }
 
 SuperBlock::SuperBlock(uint32_t class_id, ExtentManager &extent_manager,
-                       std::size_t slot_size)
+                       std::size_t slot_size, std::uint32_t core)
     : manager(extent_manager) {
   SLOT_SIZE = slot_size;
   std::size_t super_block_header_sz{sizeof(SuperBlockHeader)};
@@ -44,6 +44,7 @@ SuperBlock::SuperBlock(uint32_t class_id, ExtentManager &extent_manager,
   header->super_block_magic = 0x5B10C000;
   header->free_count = slots;
   header->payload_ptr = base + payload_align_sz;
+  header->core = core;
 
   std::uintptr_t bitmap_ptr{base + header_aligned_sz};
   bitmap = reinterpret_cast<std::uint64_t *>(bitmap_ptr);

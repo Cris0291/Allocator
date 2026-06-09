@@ -40,6 +40,7 @@ private:
   };
   struct SuperBlockHeader {
     std::uint16_t super_block_header_id;
+    std::uint16_t owner_core;
     std::uint64_t total_used_size;
     std::uint64_t total_usable_size;
     std::uintptr_t super_block_pool_offset;
@@ -52,6 +53,7 @@ private:
   };
   struct MediumChunkHeader {
     std::uint16_t medium_chunk_header_id;
+    std::uint16_t owner_core;
     std::uint64_t total_used_size;
     std::uint64_t total_usable_size;
     std::uintptr_t extent_manager_offset;
@@ -104,9 +106,11 @@ private:
                                         std::uint32_t core,
                                         std::uint32_t flags_config);
   static SuperBlockHeader *init_super_block_header(void *super_block_chunk_base,
-                                                   std::uint32_t id);
+                                                   std::uint32_t id,
+                                                   std::uint32_t core);
   static MediumChunkHeader *init_medium_header(void *medium_chunk_base,
-                                               std::uint32_t id);
+                                               std::uint32_t id,
+                                               std::uint32_t core);
   static void init_arena_stats(ArenaHeader *header);
   ExtentManager *init_extent_manager(void *base,
                                      std::uintptr_t extent_manager_offset,
@@ -150,7 +154,7 @@ private:
   void set_medium_chunk_head(MediumChunk *arena_chunk);
   void *init_memory(std::size_t size, std::size_t commit_size);
   void *find_medium_chunk(std::size_t size);
-  void *super_block_allocation_path(SuperBlock *super_block, std::size_t id,
+  void *super_block_allocation_path(SuperBlock *&super_block, std::size_t id,
                                     std::size_t size);
 
 public:
