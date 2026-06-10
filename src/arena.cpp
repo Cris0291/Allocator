@@ -272,41 +272,6 @@ SuperBlock *Arena::alloc_super_block(std::size_t id, SuperBlockHeader *header,
   return super_block;
 };
 
-SuperBlock *Arena::find_super_block(std::uintptr_t ptr, ArenaHeader *header) {
-  // potential refactor with previous function
-  // maybe add a template to accept a lanbda function the idea is
-  // to be able to dins a super block on different consitions we will see
-  SuperBlock *super_block{nullptr};
-  void *super_block_pool_addr{get_super_block_pool(header)};
-
-  SuperBlockPool *super_block_pool{
-      reinterpret_cast<SuperBlockPool *>(super_block_pool_addr)};
-
-  for (int i{}; i < 4; i++) {
-    if (!super_block_pool->occupied[i])
-      continue;
-
-    void *super_block_addr{
-        reinterpret_cast<void *>(super_block_pool->storage[i])};
-    super_block = reinterpret_cast<SuperBlock *>(super_block_addr);
-    if (super_block->is_range(ptr))
-      return super_block;
-  }
-
-  return nullptr;
-};
-
-SuperBlock *Arena::get_super_block_class_or_null(std::size_t id,
-                                                 ArenaHeader *header) {
-  void *super_block_classes{get_super_block_classes(header)};
-  SuperBlockPoolClasses *pool_classes{
-      reinterpret_cast<SuperBlockPoolClasses *>(super_block_classes)};
-  SuperBlock **classes_array{pool_classes->super_block_pool_classes};
-  if (classes_array[id])
-    return classes_array[id];
-  return nullptr;
-}
-
 Arena::ArenaStats *Arena::get_arena_stats_pointer(ArenaHeader *header) {
   void *arena_stats_addr{get_arena_stats(header)};
   ArenaStats *arena_stats{reinterpret_cast<ArenaStats *>(arena_stats_addr)};
@@ -512,7 +477,7 @@ void *Arena::alloc(std::size_t id, std::size_t size) {
   return raw;
 };
 
-bool Arena::free(void *ptr) {
+void Arena::free(void *ptr) {
   std::uintptr_t addr{reinterpret_cast<std::uintptr_t>(ptr)};
   std::uintptr_t super_block_base{addr & ~(SuperBlock::span_size - 1)};
 
@@ -523,7 +488,6 @@ bool Arena::free(void *ptr) {
     super_block_header->super_block->free_atomic_span(ptr);
     set_bytes_freed_super_block(
         super_block_header->super_block->get_slot_size(), arena_header);
-    return true;
   }
 
   void *base_header{ExtentManager::get_base_header(addr)};
@@ -538,18 +502,28 @@ bool Arena::free(void *ptr) {
       header->extent_manager_offset)};
   extent_manager->free_extent(base_header);
   set_bytes_freed_extent(ptr, arena_header);
-
-  return true;
 };
 
 void Arena::free_remote(void *ptr) {
-  LockFreeStack *lock_free_stack{get_lock_free_stack_pointer(head->header)};
+  LockFreeStack *lock_free_stack{get_lock_free_stack_pointer(arena_header)};
   lock_free_stack->push(ptr);
 };
 
-bool Arena::is_range_arena(std::uintptr_t ptr, ArenaHeader *header) {
-  std::uintptr_t start{reinterpret_cast<std::uintptr_t>(header->arena_base) +
-                       header->usable_region_offset};
-  std::uintptr_t end{start + header->total_usable_size};
-  return start <= ptr && ptr < end;
+bool Arena::is_range_arena(std::uintptr_t addr) {
+  std::uintptr_t super_block_base{addr & ~(SuperBlock::span_size - 1)};
+
+  SuperBlock::SuperBlockHeader *super_block_header{
+      reinterpret_cast<SuperBlock::SuperBlockHeader *>(super_block_base)};
+
+  if (super_block_header->super_block_magic == SuperBlock::SUPER_BLOCK_MAGIC) {
+    return super_block_header->core == arena_header->owner_core;
+  }
+  void *base_header{ExtentManager::get_base_header(addr)};
+  std::uintptr_t medium_chunk_header{
+      ExtentManager::get_own_header(base_header)};
+
+  MediumChunkHeader *header{
+      reinterpret_cast<MediumChunkHeader *>(medium_chunk_header)};
+
+  return header->owner_core == arena_header->owner_core;
 }

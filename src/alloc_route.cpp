@@ -17,19 +17,19 @@ void AllocRoute::free_thread_route(void *ptr) {
   Arena *arena{nullptr};
 
   arena = arena_pool[sched_getcpu()];
-  bool is_local = arena->free(ptr);
-
-  if (is_local)
-    return;
-
   std::uintptr_t ptr_addr{reinterpret_cast<std::uintptr_t>(ptr)};
-  for (int i{}; i < num_cores; i++) {
-    arena = arena_pool[i];
-    bool is_range = arena->is_range_arena(ptr_addr);
-    if (is_range) {
-      arena->free_remote(ptr);
-      return;
+  if (arena->is_range_arena(ptr_addr)) {
+    arena->free(ptr);
+  } else {
+    for (int i{}; i < num_cores; i++) {
+      arena = arena_pool[i];
+      bool is_range = arena->is_range_arena(ptr_addr);
+      if (is_range) {
+        arena->free_remote(ptr);
+        return;
+      }
     }
   }
+
   // Huge memory free should be here
 };

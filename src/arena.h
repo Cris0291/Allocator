@@ -137,9 +137,6 @@ private:
                              std::uint64_t total_usable_size);
   SuperBlock *alloc_super_block(std::size_t id, SuperBlockHeader *header,
                                 ExtentManager *extent_manager);
-  SuperBlock *find_super_block(std::uintptr_t ptr, ArenaHeader *header);
-  SuperBlock *get_super_block_class_or_null(std::size_t id,
-                                            ArenaHeader *header);
   ArenaStats *get_arena_stats_pointer(ArenaHeader *header);
   LockFreeStack *get_lock_free_stack_pointer(ArenaHeader *header);
   void set_bytes_allocated(std::size_t size, bool is_extent,
@@ -160,7 +157,7 @@ private:
 public:
   Arena(std::uint32_t id, std::uint32_t core, std::uint32_t flags_config);
   void *alloc(std::size_t id, std::size_t size);
-  bool free(void *ptr);
+  void free(void *ptr);
   void free_remote(void *ptr);
-  bool is_range_arena(std::uintptr_t ptr, ArenaHeader *header);
+  bool is_range_arena(std::uintptr_t addr);
 };
