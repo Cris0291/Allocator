@@ -68,7 +68,7 @@ public:
 
   void *alloc_extent_aligned(std::size_t size);
 
-  void free_extent(void *base_header);
+  void free_extent(void *base_header, std::size_t size = 0);
 
   inline static void *get_base_header(std::uintptr_t base) {
     return reinterpret_cast<void *>(base - sizeof(ExtentHeader));

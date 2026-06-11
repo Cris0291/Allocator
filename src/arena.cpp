@@ -488,6 +488,7 @@ void Arena::free(void *ptr) {
     super_block_header->super_block->free_atomic_span(ptr);
     set_bytes_freed_super_block(
         super_block_header->super_block->get_slot_size(), arena_header);
+    return;
   }
 
   void *base_header{ExtentManager::get_base_header(addr)};
@@ -496,6 +497,7 @@ void Arena::free(void *ptr) {
       ExtentManager::get_own_header(base_header)};
   MediumChunkHeader *header{
       reinterpret_cast<MediumChunkHeader *>(medium_chunk_header)};
+
   header->total_used_size -= size;
   ExtentManager *extent_manager{reinterpret_cast<ExtentManager *>(
       reinterpret_cast<std::uintptr_t>(header->base) +

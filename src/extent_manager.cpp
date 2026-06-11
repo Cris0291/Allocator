@@ -100,17 +100,21 @@ void *ExtentManager::alloc_extent_aligned(std::size_t size) {
   return reinterpret_cast<void *>(aligned_base);
 };
 
-void ExtentManager::free_extent(void *base_header) {
-  ExtentHeader *header{reinterpret_cast<ExtentHeader *>(base_header)};
-  std::size_t size{header->size};
+void ExtentManager::free_extent(void *base_header, std::size_t size) {
+  std::size_t final_size{};
+  if (size == 0) {
+    ExtentHeader *header{reinterpret_cast<ExtentHeader *>(base_header)};
+    final_size = header->size + sizeof(ExtentHeader);
+  } else {
+    final_size = size;
+  }
 
   Entry *prev{nullptr};
   Entry *next{nullptr};
   Entry *entry{nullptr};
 
-  std::size_t size_with_header{size + sizeof(ExtentHeader)};
   entry = insert_new_node(reinterpret_cast<std::uintptr_t>(base_header),
-                          size_with_header);
+                          final_size);
   RBNode *next_node{&entry->rb};
   next_node = rb_next(next_node);
   RBNode *prev_node{&entry->rb};
