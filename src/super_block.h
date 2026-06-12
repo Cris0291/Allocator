@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstring>
 #include <new>
+#include <utility>
 
 class SuperBlock {
 private:
@@ -40,6 +41,7 @@ public:
   SuperBlock(uint32_t class_id, ExtentManager &extent_manager,
              std::size_t slot_size, std::uint32_t core);
   void *allocate_atomic_span(std::size_t hint_word);
+  std::pair<void **, int> allocate_atomic_block(std::size_t hint_word);
   void free_atomic_span(void *payload);
   bool is_full();
   bool is_empty();

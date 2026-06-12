@@ -90,6 +90,41 @@ void *SuperBlock::allocate_atomic_span(std::size_t hint_word = 0) {
   return nullptr;
 }
 
+std::pair<void **, int>
+SuperBlock::allocate_atomic_block(std::size_t hint_word = 0) {
+  std::size_t bitmap_words{total_number_slots / 64};
+  if (hint_word > bitmap_words)
+    hint_word = 0;
+
+  while (hint_word <= bitmap_words) {
+    std::uint64_t old_word = atomic_word_load(&bitmap[hint_word]);
+    std::uint64_t free_mask = ~old_word;
+    if (free_mask == 0) {
+      hint_word++;
+      continue;
+    }
+    std::uint64_t prev = atomic_word_fetch_or(&bitmap[hint_word], free_mask);
+    std::uint64_t actually_allocated = free_mask & ~prev;
+    if (actually_allocated == 0) {
+      hint_word++;
+      continue;
+    }
+    std::uint64_t to_be_reclaimed = actually_allocated;
+    void **out{nullptr};
+    int count{};
+    while (actually_allocated > 0) {
+      int bit = __builtin_ctzll(actually_allocated);
+      std::size_t slot_index = hint_word * 64 + bit;
+      std::uintptr_t payload =
+          super_block_header->payload_ptr + slot_index * SLOT_SIZE;
+      out[count++] = reinterpret_cast<void *>(payload);
+      actually_allocated &= (actually_allocated - 1);
+    }
+    return {out, count};
+  }
+  return {};
+}
+
 void SuperBlock::free_atomic_span(void *payload) {
   std::uintptr_t p{reinterpret_cast<std::uintptr_t>(payload)};
   std::uintptr_t offset{p - super_block_header->payload_ptr};
