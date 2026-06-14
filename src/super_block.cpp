@@ -1,4 +1,7 @@
 #include "super_block.h"
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 
 std::size_t SuperBlock::bitmap_size_convergence_routine(std::size_t header_sz) {
   std::size_t N0 = std::floor(span_size - header_sz) / SLOT_SIZE;
@@ -90,8 +93,10 @@ void *SuperBlock::allocate_atomic_span(std::size_t hint_word = 0) {
   return nullptr;
 }
 
-std::pair<void **, int>
-SuperBlock::allocate_atomic_block(std::size_t hint_word = 0) {
+int SuperBlock::allocate_atomic_block(void **out, int max_count,
+                                      std::size_t hint_word) {
+  int count{};
+  int temp_max_count{max_count};
   std::size_t bitmap_words{total_number_slots / 64};
   if (hint_word > bitmap_words)
     hint_word = 0;
@@ -109,20 +114,30 @@ SuperBlock::allocate_atomic_block(std::size_t hint_word = 0) {
       hint_word++;
       continue;
     }
-    std::uint64_t to_be_reclaimed = actually_allocated;
-    void **out{nullptr};
-    int count{};
-    while (actually_allocated > 0) {
+
+    while (actually_allocated > 0 && temp_max_count > 0) {
       int bit = __builtin_ctzll(actually_allocated);
       std::size_t slot_index = hint_word * 64 + bit;
       std::uintptr_t payload =
           super_block_header->payload_ptr + slot_index * SLOT_SIZE;
       out[count++] = reinterpret_cast<void *>(payload);
       actually_allocated &= (actually_allocated - 1);
+      temp_max_count--;
     }
-    return {out, count};
+
+    if (temp_max_count == 0) {
+      int remains = __builtin_popcountll(actually_allocated);
+      if (remains > 0)
+        atomic_word_fetch_and(&bitmap[hint_word], ~actually_allocated);
+      break;
+    } else {
+      hint_word++;
+      continue;
+    }
   }
-  return {};
+  if (count > 0)
+    super_block_header->free_count.fetch_sub(count);
+  return count;
 }
 
 void SuperBlock::free_atomic_span(void *payload) {
@@ -138,6 +153,27 @@ void SuperBlock::free_atomic_span(void *payload) {
   // TODO handle over addtion surpasing the available amount of slots
   super_block_header->free_count.fetch_add(1);
   return;
+}
+
+void SuperBlock::free_atomic_block(void **payloads, int max_count) {
+  std::uint64_t bucket_words[MAX_WORDS]{};
+  for (int i{}; i < max_count; i++) {
+    std::uintptr_t p = reinterpret_cast<std::uintptr_t>(payloads[i]);
+    std::uintptr_t offset = p - super_block_header->payload_ptr;
+    std::uintptr_t slot_index = offset / SLOT_SIZE;
+    std::uintptr_t word_index = slot_index / 64;
+    std::uintptr_t bit = slot_index % 64;
+    std::uint64_t single_mask = 1ULL << bit;
+    bucket_words[word_index] |= single_mask;
+  }
+
+  std::size_t words{total_number_slots / 64};
+  for (int i{}; i < words; i++) {
+    if (bucket_words[i] == 0)
+      continue;
+    atomic_word_fetch_and(&bitmap[i], ~bucket_words[i]);
+  }
+  super_block_header->free_count.fetch_add(max_count);
 }
 
 bool SuperBlock::is_full() {

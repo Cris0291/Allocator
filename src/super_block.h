@@ -2,13 +2,13 @@
 
 #include "atomic_word_ops.h"
 #include "extent_manager.h"
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <new>
-#include <utility>
 
 class SuperBlock {
 private:
@@ -22,6 +22,9 @@ private:
 
 public:
   static constexpr std::size_t span_size{64 * 1024};
+  // the 8 is because the min slot size is 8 bytes then since i want thhe words
+  // i divided the result by 64 plus one just in case i need an extra slot
+  static constexpr std::size_t MAX_WORDS{span_size / 8 / 64 + 1};
   static constexpr std::uint32_t SUPER_BLOCK_MAGIC{0x5B10C000};
   struct SuperBlockHeader {
     uint32_t class_id;
@@ -41,8 +44,10 @@ public:
   SuperBlock(uint32_t class_id, ExtentManager &extent_manager,
              std::size_t slot_size, std::uint32_t core);
   void *allocate_atomic_span(std::size_t hint_word);
-  std::pair<void **, int> allocate_atomic_block(std::size_t hint_word);
+  int allocate_atomic_block(void **out, int max_count = 64,
+                            std::size_t hint_word = 0);
   void free_atomic_span(void *payload);
+  void free_atomic_block(void **payloads, int max_count);
   bool is_full();
   bool is_empty();
   uint32_t free_count();
